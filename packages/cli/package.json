@@ -1,0 +1,15 @@
+{
+  "name": "@synapse/cli",
+  "version": "0.1.0",
+  "description": "The synapse command line: a second client of synapse-core, proving the core works without the IDE (risk T7).",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "synapse": "dist/src/main.js"
+  },
+  "files": ["dist/src"],
+  "dependencies": {
+    "@synapse/client": "0.1.0",
+    "@synapse/core": "0.1.0"
+  }
+}
