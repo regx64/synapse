@@ -77,6 +77,7 @@ Done criteria (50 beta users, retention measurement) are outside what code can d
   commands with their own tools. Synapse sees those edits (file watching and
   snapshots) but cannot stop a shell command from writing outside the
   worktree. That needs the phase 3 permission model and OS sandboxing.
+- **Upstream branding in the UI.** Strings and links naming VS Code or Microsoft remain; see [branding-audit.md](branding-audit.md) and [fork maintenance](fork-maintenance.md#remaining-upstream-branding).
 - **The built-in Copilot** in Code - OSS 1.147 is an open decision; see
   [fork maintenance](fork-maintenance.md#open-question-the-built-in-copilot).
 - **Same-user processes.** An agent's shell can read `.synapse/core.json`

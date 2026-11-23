@@ -37,6 +37,9 @@ if (fs.existsSync(path.join(VSCODE, "product.json"))) {
     const b = fs.readFileSync(path.join(ROOT, "resources", "generated", generated));
     if (!a.equals(b)) problems.push(`vscode/${upstreamPath} is still upstream's icon`);
   }
+  if (!fs.existsSync(path.join(VSCODE, "extensions", "synapse-collab", "dist", "ThirdPartyNotices.txt"))) {
+    problems.push("vscode/extensions/synapse-collab/dist/ThirdPartyNotices.txt is missing: the extension's bundled dependencies need their notices");
+  }
   const manifest = fs.readFileSync(path.join(VSCODE, "resources", "win32", "VisualElementsManifest.xml"), "utf8");
   if (/Code - OSS|Visual Studio Code/.test(manifest)) problems.push("the Windows tile manifest still shows the upstream name");
 }

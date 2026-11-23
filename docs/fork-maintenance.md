@@ -89,6 +89,41 @@ not count against the patch budget) and sets the Windows Start tile name and
 color. If an upstream release renames or drops an icon, prepare fails and
 names it.
 
+## Licenses in what ships
+
+- **Upstream:** Code - OSS's `LICENSE.txt` and `ThirdPartyNotices.txt` ship
+  unchanged; `prepare.mjs` refuses to build without them.
+- **Synapse's extension:** `extensions/synapse-collab/esbuild.mjs` writes
+  `dist/ThirdPartyNotices.txt` from esbuild's input list (everything bundled
+  from `node_modules`), plus the tree-sitter runtime and the grammar licenses
+  kept in `extensions/synapse-collab/licenses/`. A bundled package without a
+  license file fails the build.
+- **Built app:** after the upstream build, `build/check-output-licenses.mjs`
+  walks every `node_modules` in the app. Packages under a custom license
+  (`"SEE LICENSE IN <file>"`, such as the GitHub Copilot CLI, whose license
+  allows redistribution only unmodified and with the license included) must
+  ship that file; a missing one is copied from the Code - OSS checkout, or the
+  build fails. It also checks both notice files are in the app.
+
+## Remaining upstream branding
+
+[`branding-audit.md`](branding-audit.md) (from `node build/audit-branding.mjs`)
+lists what users can still see. For 1.147.0: 375 UI strings that name VS Code
+or Microsoft (mostly setting descriptions, many in the Agents and Copilot
+features), 188 help links to Microsoft sites, 107 strings in built-in
+extensions (almost all the Copilot extension) and 17 `product.json` values
+(Copilot URLs, the publisher of three MIT Microsoft extensions bundled from
+GitHub releases, the "VS Code" keymap name).
+
+None of it is a Microsoft logo, and most reads as a description of upstream
+behavior; still, the plan says not to use the VS Code name in the product.
+Options, cheapest first: decide what to do with the built-in Copilot (removes
+most of the extension strings and URLs); rewrite "VS Code" to the product name
+in the built NLS message bundle after the upstream build (no core patch, but
+needs a reviewed list, since some strings mean the real VS Code, such as
+importing its settings); point help links at Synapse documentation once it
+exists.
+
 ## Extensions: Open VSX, not the Visual Studio Marketplace
 
 Marketplace terms (revised September 2025) limit marketplace extensions to
