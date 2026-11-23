@@ -38,7 +38,10 @@ needs a machine or CI runner with the upstream toolchain (see
    with an owner and a reason.
 
 **Budget: 20 core patches** (`build/check-patches.mjs`, part of `npm run check`).
-Current count: **0**. Branding is `product.json`; telemetry needs no patch
+Current count: **1**: `0001-publisher-from-product.patch` makes the Windows
+and macOS file version info and the Windows installer take the publisher,
+copyright and URL from `product.json` instead of Microsoft's. The rest of
+the branding is `product.json` and the icon overlay; telemetry needs no patch
 because Code - OSS sends telemetry only when `product.json` sets
 `enableTelemetry` (see `src/vs/platform/telemetry/common/telemetryUtils.ts`),
 and Synapse sets it to `false`.

@@ -15,8 +15,14 @@ Rules (from the plan, "Running the fork"):
 4. **Small and focused.** One concern per patch, so upstream sync failures
    point at one thing.
 
-Current count: **0**. Branding and telemetry need no patch: `product.json`
-handles both (Code - OSS only sends telemetry when `enableTelemetry` is true).
+Current count: **1**.
+
+| Patch | Why |
+| --- | --- |
+| `0001-publisher-from-product.patch` | Upstream hard-codes "Microsoft Corporation", a Microsoft copyright and code.visualstudio.com in Windows/macOS file version info and the Windows installer. The patch reads `companyName`, `copyright` and `publisherUrl` from `product.json`. |
+
+Names, icons and telemetry need no patch: `product.json` and the icon overlay
+handle them (Code - OSS only sends telemetry when `enableTelemetry` is true).
 
 ## Adding a patch
 

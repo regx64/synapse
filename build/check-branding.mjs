@@ -7,7 +7,7 @@ import { ROOT, VSCODE, fail, readJson } from "./lib.mjs";
 const problems = [];
 const product = readJson(path.join(ROOT, "product.json"));
 const forbidden = /visual studio code|vs ?code|\bvscode\b|microsoft/i;
-const identityKeys = ["nameShort", "nameLong", "applicationName", "dataFolderName", "win32DirName", "win32NameVersion", "win32AppUserModelId", "darwinBundleIdentifier", "linuxDesktopName", "urlProtocol"];
+const identityKeys = ["nameShort", "nameLong", "applicationName", "dataFolderName", "win32DirName", "win32NameVersion", "win32AppUserModelId", "darwinBundleIdentifier", "linuxDesktopName", "urlProtocol", "companyName", "copyright", "publisherUrl"];
 for (const k of identityKeys) {
   if (!product[k]) problems.push(`product.json is missing ${k}`);
   else if (forbidden.test(String(product[k]))) problems.push(`product.json ${k} uses a Microsoft name: ${product[k]}`);

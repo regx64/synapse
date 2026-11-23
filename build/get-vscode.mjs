@@ -23,7 +23,10 @@ if (fs.existsSync(VSCODE)) {
   fs.rmSync(VSCODE, { recursive: true, force: true });
 }
 
-run("git", ["-c", "advice.detachedHead=false", "clone", "--depth", "1", "--branch", tag, pin.repo, VSCODE]);
+// LF line endings on every OS, so patches/ (made with LF) apply the same way on
+// Windows, where runners default to core.autocrlf=true. Files that need CRLF
+// keep it through upstream's .gitattributes (eol=crlf).
+run("git", ["-c", "advice.detachedHead=false", "clone", "--config", "core.autocrlf=false", "--config", "core.eol=lf", "--depth", "1", "--branch", tag, pin.repo, VSCODE]);
 const head = capture("git", ["rev-parse", "HEAD"], { cwd: VSCODE }).stdout;
 if (tag === pin.tag && head !== pin.commit) fail(`tag ${tag} resolved to ${head}, but build/upstream.json pins ${pin.commit}`);
 console.log(`fetched Code - OSS ${tag} at ${head}`);

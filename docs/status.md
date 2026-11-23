@@ -13,7 +13,7 @@ recorded here; "not verified" means written but not yet run end to end.
 | synapse-core skeleton: separate process, local JSON-RPC API, state store, event stream | Done |
 | Rehearse one upstream sync and measure it | Automated in `upstream-sync.yml`; no newer upstream release exists yet to rehearse against |
 
-G1 numbers so far: **0 core patches**; dev builds on 3 OSes pass (about 7 minutes on Linux and macOS, 12 on Windows); upstream sync time not yet measured.
+G1 numbers so far: **1 core patch** (publisher and copyright from `product.json`); dev builds on 3 OSes pass (about 7 minutes on Linux and macOS, 12 on Windows); upstream sync time not yet measured.
 
 ## Phase 2: MVP
 
@@ -77,7 +77,6 @@ Done criteria (50 beta users, retention measurement) are outside what code can d
   commands with their own tools. Synapse sees those edits (file watching and
   snapshots) but cannot stop a shell command from writing outside the
   worktree. That needs the phase 3 permission model and OS sandboxing.
-- **Windows file metadata.** Upstream's Windows packaging writes "Microsoft Corporation" as the company name into bundled native binaries' version info (`patchWin32DependenciesTask` in `build/gulpfile.vscode.ts`). Changing it needs a core patch; not done yet.
 - **The built-in Copilot** in Code - OSS 1.147 is an open decision; see
   [fork maintenance](fork-maintenance.md#open-question-the-built-in-copilot).
 - **Same-user processes.** An agent's shell can read `.synapse/core.json`

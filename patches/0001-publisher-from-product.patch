@@ -1,0 +1,83 @@
+diff --git a/build/gulpfile.reh.ts b/build/gulpfile.reh.ts
+index 72a3b4c1..413d40e2 100644
+--- a/build/gulpfile.reh.ts
++++ b/build/gulpfile.reh.ts
+@@ -499,11 +499,11 @@ function patchWin32DependenciesTask(destinationFolderName: string) {
+ 			await rcedit(fullPath, {
+ 				'file-version': baseVersion,
+ 				'version-string': {
+-					'CompanyName': 'Microsoft Corporation',
++					'CompanyName': productContents.companyName ?? 'Microsoft Corporation',
+ 					'FileDescription': productContents.nameLong,
+ 					'FileVersion': packageJsonContents.version,
+ 					'InternalName': basename,
+-					'LegalCopyright': 'Copyright (C) 2026 Microsoft. All rights reserved',
++					'LegalCopyright': productContents.copyright ?? 'Copyright (C) 2026 Microsoft. All rights reserved',
+ 					'OriginalFilename': basename,
+ 					'ProductName': productContents.nameLong,
+ 					'ProductVersion': packageJsonContents.version,
+diff --git a/build/gulpfile.vscode.ts b/build/gulpfile.vscode.ts
+index 8de1c610..9994b985 100644
+--- a/build/gulpfile.vscode.ts
++++ b/build/gulpfile.vscode.ts
+@@ -537,11 +537,11 @@ function patchWin32DependenciesTask(destinationFolderName: string) {
+ 			await rcedit(fullPath, {
+ 				'file-version': baseVersion,
+ 				'version-string': {
+-					'CompanyName': 'Microsoft Corporation',
++					'CompanyName': product.companyName ?? 'Microsoft Corporation',
+ 					'FileDescription': product.nameLong,
+ 					'FileVersion': packageJson.version,
+ 					'InternalName': basename,
+-					'LegalCopyright': 'Copyright (C) 2026 Microsoft. All rights reserved',
++					'LegalCopyright': product.copyright ?? 'Copyright (C) 2026 Microsoft. All rights reserved',
+ 					'OriginalFilename': basename,
+ 					'ProductName': product.nameLong,
+ 					'ProductVersion': packageJson.version,
+diff --git a/build/gulpfile.vscode.win32.ts b/build/gulpfile.vscode.win32.ts
+index 0722b7f4..56a3ae1b 100644
+--- a/build/gulpfile.vscode.win32.ts
++++ b/build/gulpfile.vscode.win32.ts
+@@ -101,6 +101,8 @@ function buildWin32Setup(arch: string, target: string): task.CallbackTask {
+ 			AppId: { 'x64': x64AppId, 'arm64': arm64AppId }[arch],
+ 			IncompatibleTargetAppId: { 'x64': product.win32x64AppId, 'arm64': product.win32arm64AppId }[arch],
+ 			AppUserId: product.win32AppUserModelId,
++			Publisher: (product as { companyName?: string }).companyName ?? 'Microsoft Corporation',
++			PublisherUrl: (product as { publisherUrl?: string }).publisherUrl ?? 'https://code.visualstudio.com/',
+ 			ArchitecturesAllowed: { 'x64': 'x64', 'arm64': 'arm64' }[arch],
+ 			ArchitecturesInstallIn64BitMode: { 'x64': 'x64', 'arm64': 'arm64' }[arch],
+ 			SourceDir: sourcePath,
+diff --git a/build/lib/electron.ts b/build/lib/electron.ts
+index 3a55d04b..cb053630 100644
+--- a/build/lib/electron.ts
++++ b/build/lib/electron.ts
+@@ -157,8 +157,8 @@ const electronAssetResolver = electronFeed
+ export const config = {
+ 	version: electronVersion,
+ 	productAppName: product.nameLong,
+-	companyName: 'Microsoft Corporation',
+-	copyright: 'Copyright (C) 2026 Microsoft. All rights reserved',
++	companyName: (product as { companyName?: string }).companyName ?? 'Microsoft Corporation',
++	copyright: (product as { copyright?: string }).copyright ?? 'Copyright (C) 2026 Microsoft. All rights reserved',
+ 	darwinExecutable: product.nameShort,
+ 	darwinIcon: 'resources/darwin/code.icns',
+ 	darwinBundleIdentifier: product.darwinBundleIdentifier,
+diff --git a/build/win32/code.iss b/build/win32/code.iss
+index a5e3597b..f366fafe 100644
+--- a/build/win32/code.iss
++++ b/build/win32/code.iss
+@@ -8,10 +8,10 @@
+ AppId={#AppId}
+ AppName={#NameLong}
+ AppVerName={#NameVersion}
+-AppPublisher=Microsoft Corporation
+-AppPublisherURL=https://code.visualstudio.com/
+-AppSupportURL=https://code.visualstudio.com/
+-AppUpdatesURL=https://code.visualstudio.com/
++AppPublisher={#Publisher}
++AppPublisherURL={#PublisherUrl}
++AppSupportURL={#PublisherUrl}
++AppUpdatesURL={#PublisherUrl}
+ DefaultGroupName={#NameLong}
+ AllowNoIcons=yes
+ OutputDir={#OutputDir}
