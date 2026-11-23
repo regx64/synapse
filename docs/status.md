@@ -9,7 +9,7 @@ recorded here; "not verified" means written but not yet run end to end.
 | --- | --- |
 | Build repo: pinned upstream tag, patch-apply script, `product.json`, telemetry off, Open VSX | Done. Steps fetch → patch → prepare → branding check ran against Code - OSS 1.147.0 |
 | Development builds for Linux, macOS, Windows in CI | Written (`dev-build.yml`); **not verified**: the full upstream compile has not run yet |
-| Built-in extension skeleton: board panel, commands, status bar | Done (beyond skeleton: markers, diagnostics, review panel). Smoke-tested in VS Code 1.147.0 (`npm run test:smoke -w extensions/synapse-collab`): activates, starts the core with the editor's runtime, shows a two-agent conflict in the Problems panel, registers its commands, and applies an agent policy edited as JSON. The board was rendered in Chromium from real core state and checked by eye (all five tabs); the review panel has not been. |
+| Built-in extension skeleton: board panel, commands, status bar | Done (beyond skeleton: markers, diagnostics, review panel). Smoke-tested in VS Code 1.147.0 (`npm run test:smoke -w extensions/synapse-collab`): activates, starts the core with the editor's runtime, shows a two-agent conflict in the Problems panel, registers its commands, and applies an agent policy edited as JSON. The board (all five tabs) and the review panel (blocked, clean and merged reviews) were rendered in Chromium from real core state and checked by eye. |
 | synapse-core skeleton: separate process, local JSON-RPC API, state store, event stream | Done |
 | Rehearse one upstream sync and measure it | Automated in `upstream-sync.yml`; no newer upstream release exists yet to rehearse against |
 

@@ -1,5 +1,7 @@
 # Synapse
 
+English | [한국어](README.ko.md)
+
 Synapse is an IDE where several AI agents work in one workspace and a person
 directs that collaboration from one screen. Its point is not to run several
 agents. It is to **keep agents that work at the same time from breaking each
