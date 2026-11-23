@@ -68,9 +68,11 @@ Done criteria (50 beta users, retention measurement) are outside what code can d
 
 ## Known limits
 
-- **Call matching is by name.** Two unrelated functions with the same short
-  name in one language family can raise a false signature-change warning.
-  Import resolution would fix it.
+- **Call matching.** JavaScript/TypeScript and Python calls are resolved
+  through imports. Member calls (`obj.method()`), Go, Rust and Java still
+  match by name, so methods or functions with the same name can raise a
+  false signature-change warning there. Workspace-package imports are matched
+  by package folder name, not by `package.json` resolution.
 - **Agents' own tools.** Agents such as Claude Code edit files and run
   commands with their own tools. Synapse sees those edits (file watching and
   snapshots) but cannot stop a shell command from writing outside the

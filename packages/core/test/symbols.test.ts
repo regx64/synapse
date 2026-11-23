@@ -90,3 +90,30 @@ test("arity of definitions and argument counts of calls", async () => {
   const go = (await parseSource("m.go", `package p\nfunc F(a, b int, c string) {}\n`))!;
   assert.deepEqual(go.symbols[0]!.params, { min: 3, max: 3 });
 });
+
+test("imports and member calls are recorded for resolution", async () => {
+  const { moduleMatches } = await import("../src/conflicts.js");
+  const ts = (await parseSource("src/a.ts", `import def, { x as y, z } from "./b.js";\nimport * as ns from "../c";\nconst { q, r: s } = require("./d");\ny(); ns.w(); obj.m();\n`))!;
+  assert.deepEqual(ts.imports.map((i) => [i.local, i.imported, i.source, i.kind]), [
+    ["def", "default", "./b.js", "default"],
+    ["y", "x", "./b.js", "named"],
+    ["z", "z", "./b.js", "named"],
+    ["ns", "*", "../c", "namespace"],
+    ["q", "q", "./d", "named"],
+    ["s", "r", "./d", "named"],
+  ]);
+  assert.deepEqual(ts.calls.filter((c) => c.callee !== "require").map((c) => [c.callee, c.member]), [["y", false], ["w", true], ["m", true]]);
+  assert.equal(ts.hasImports, true);
+
+  const py = (await parseSource("shop/cart.py", `from .pricing import apply as ap, fmt\nfrom shop.tax import *\nap(1)\n`))!;
+  assert.deepEqual(py.imports.map((i) => [i.local, i.imported, i.source]), [["ap", "apply", ".pricing"], ["fmt", "fmt", ".pricing"], ["*", "*", "shop.tax"]]);
+
+  assert.ok(moduleMatches("src/a.ts", "./b.js", "src/b.ts"));
+  assert.ok(moduleMatches("src/a.ts", "../lib", "lib/index.ts"));
+  assert.ok(!moduleMatches("src/a.ts", "./old", "src/b.ts"));
+  assert.ok(moduleMatches("src/a.ts", "@/lib/b", "src/lib/b.ts"));
+  assert.ok(moduleMatches("shop/cart.py", ".pricing", "shop/pricing.py"));
+  assert.ok(moduleMatches("shop/sub/x.py", "..pricing", "shop/pricing.py"));
+  assert.ok(moduleMatches("app.py", "shop.pricing", "src/shop/pricing.py"));
+  assert.ok(!moduleMatches("app.py", "numpy", "src/shop/pricing.py"));
+});

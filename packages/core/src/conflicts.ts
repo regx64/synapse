@@ -1,7 +1,8 @@
 import type { AgentOwnership, AgentState, CallSite, Conflict } from "@synapse/protocol";
 import { predictMergeConflicts } from "./git.js";
 import type { FileDetail } from "./ownership.js";
-import { languageFor } from "./symbols.js";
+import { posix } from "node:path";
+import { languageFor, type CallRef, type ImportBinding, type ParsedFile } from "./symbols.js";
 import { nowIso, shortHash } from "./util.js";
 
 /**
@@ -84,7 +85,7 @@ export function detectConflicts(input: DetectInput): Conflict[] {
           if (other.agentId === owner.agentId) continue;
           const newParams =
             sym.change === "removed" ? undefined : input.details(owner.agentId).get(file.path)?.newParsed?.symbols.find((s) => s.name === sym.name)?.params;
-          const sites = findCallSites(other.agentId, input.details(other.agentId), shortName, family(file.path));
+          const sites = findCallSites(other.agentId, input.details(other.agentId), shortName, file.path, sym.kind === "method");
           // A call that already fits the new signature is not a problem.
           const newSites = sites.filter((s) => s.isNew && !(sym.change !== "removed" && fits(s.argCount, newParams)));
           if (newSites.length === 0) continue;
@@ -152,12 +153,18 @@ function fits(argCount: number | undefined, params: { min: number; max: number }
   return argCount >= params.min && argCount <= params.max;
 }
 
-function findCallSites(agentId: string, details: Map<string, FileDetail>, callee: string, fam: string | undefined): CallSite[] {
+function findCallSites(agentId: string, details: Map<string, FileDetail>, shortName: string, defPath: string, isMethod: boolean): CallSite[] {
+  const fam = family(defPath);
   const sites: CallSite[] = [];
   for (const d of details.values()) {
-    if (!d.newParsed || family(d.path) !== fam) continue;
-    for (const call of d.newParsed.calls) {
-      if (call.callee !== callee) continue;
+    const parsed = d.newParsed;
+    if (!parsed || family(d.path) !== fam) continue;
+    for (const call of parsed.calls) {
+      const binding = parsed.imports.find((b) => b.local === call.callee && (b.kind === "named" || b.kind === "default"));
+      const name = binding?.kind === "named" ? binding.imported : call.callee;
+      if (name !== shortName && !(binding?.kind === "default")) continue;
+      if (binding?.kind === "default" && call.callee !== shortName && !moduleMatches(d.path, binding.source, defPath)) continue;
+      if (!refersTo(d.path, parsed, call, binding, defPath, isMethod)) continue;
       const isNew =
         d.status === "added" ||
         (call.inSymbol !== undefined && d.changedSymbols.has(call.inSymbol)) ||
@@ -166,6 +173,77 @@ function findCallSites(agentId: string, details: Map<string, FileDetail>, callee
     }
   }
   return sites;
+}
+
+/**
+ * Whether a call in `callPath` can refer to the function defined in
+ * `defPath`. Imports are resolved for JavaScript/TypeScript and Python;
+ * anything that cannot be resolved (member calls, other languages, files
+ * without imports) counts as a possible match, so real conflicts are not
+ * missed.
+ */
+export function refersTo(
+  callPath: string,
+  parsed: ParsedFile,
+  call: CallRef,
+  binding: ImportBinding | undefined,
+  defPath: string,
+  isMethod: boolean,
+): boolean {
+  if (callPath === defPath) return true;
+  if (isMethod || call.member) return true;
+  const fam = family(callPath);
+  if (fam !== "js" && fam !== "python") return true;
+  if (binding) return moduleMatches(callPath, binding.source, defPath);
+  if (parsed.imports.some((b) => b.kind === "wildcard" && moduleMatches(callPath, b.source, defPath))) return true;
+  // A function of that name defined in the calling file shadows the other one.
+  if (parsed.symbols.some((s) => s.name === call.callee && (s.kind === "function" || s.kind === "class"))) return false;
+  // In a module, a free name that is neither imported nor defined is not another file's function.
+  return !parsed.hasImports;
+}
+
+const JS_EXTS = [".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs"];
+
+/** Whether an import specifier written in `fromPath` resolves to `targetPath` (repo-relative, `/`-separated). */
+export function moduleMatches(fromPath: string, source: string, targetPath: string): boolean {
+  const fam = family(fromPath);
+  if (fam === "js") {
+    if (source.startsWith(".")) {
+      const base = posix.normalize(posix.join(posix.dirname(fromPath), source));
+      const stems = [base, base.replace(/\.(m|c)?jsx?$/, "")];
+      const candidates = new Set<string>([base]);
+      for (const stem of stems) {
+        for (const ext of JS_EXTS) candidates.add(stem + ext);
+        for (const ext of JS_EXTS) candidates.add(`${stem}/index${ext}`);
+      }
+      return candidates.has(targetPath);
+    }
+    // Path aliases (@/lib/x, ~/lib/x, #lib/x): match on the path after the alias.
+    const alias = /^(@|~|#)\//.exec(source);
+    if (alias) {
+      const rest = source.slice(alias[0].length).replace(/\.(m|c)?jsx?$/, "");
+      const noExt = targetPath.replace(/\.[^./]+$/, "");
+      return noExt === rest || noExt.endsWith(`/${rest}`) || noExt.endsWith(`/${rest}/index`);
+    }
+    // Bare package names: only a workspace package in this repository can contain the target.
+    const pkg = source.startsWith("@") ? source.split("/")[1] : source.split("/")[0];
+    return !!pkg && targetPath.split("/").includes(pkg);
+  }
+  if (fam === "python") {
+    let dir: string;
+    let mod: string;
+    const rel = /^(\.+)(.*)$/.exec(source);
+    if (rel) {
+      dir = posix.dirname(fromPath);
+      for (let i = 1; i < rel[1]!.length; i++) dir = posix.dirname(dir);
+      mod = rel[2]!;
+      const p = mod ? posix.join(dir === "." ? "" : dir, mod.split(".").join("/")) : dir;
+      return targetPath === `${p}.py` || targetPath === `${p}/__init__.py`;
+    }
+    mod = source.split(".").join("/");
+    return [`${mod}.py`, `${mod}/__init__.py`].some((c) => targetPath === c || targetPath.endsWith(`/${c}`));
+  }
+  return true;
 }
 
 /** Predicts textual merge conflicts for every pair of agents that touch a common file. */

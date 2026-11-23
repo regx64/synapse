@@ -26,7 +26,7 @@ what happens next, not the calendar. Current state in detail:
 
 - Measure the phase 2 criterion with real Claude and Codex sessions.
 - First full IDE build on Linux, macOS and Windows; first upstream sync.
-- Import resolution for call matching, to cut false signature-change warnings.
+- Type-aware call matching for member calls (`obj.method()`) and Go, Rust, Java (imports are already resolved for JS/TS and Python).
 - OS-level sandboxing for agents' own shell tools (policies today cover what goes through Synapse).
 - Synapse artwork; a decision on the built-in Copilot.
 

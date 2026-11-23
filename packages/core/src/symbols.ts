@@ -31,6 +31,8 @@ export interface ParsedSymbol {
 
 export interface CallRef {
   callee: string;
+  /** Called through an object, module or type (`obj.f()`, `mod.f()`), so the target cannot be resolved by name. */
+  member: boolean;
   /** Number of arguments, or undefined when it cannot be known (spread arguments). */
   argCount?: number;
   line: number;
@@ -38,10 +40,22 @@ export interface CallRef {
   inSymbol?: string;
 }
 
+/** A name a file imports: `import { imported as local } from "source"`. */
+export interface ImportBinding {
+  local: string;
+  imported: string;
+  source: string;
+  kind: "named" | "default" | "namespace" | "wildcard";
+}
+
 export interface ParsedFile {
   language: string;
   symbols: ParsedSymbol[];
   calls: CallRef[];
+  /** JavaScript/TypeScript and Python only. */
+  imports: ImportBinding[];
+  /** The file has import statements (it is a module, so unimported free names are not other files' functions). */
+  hasImports: boolean;
 }
 
 type LangId = "typescript" | "tsx" | "javascript" | "python" | "go" | "rust" | "java";
@@ -374,6 +388,8 @@ function extract(lang: LangId, root: TsNode, source: string): ParsedFile {
   const spec = SPECS[lang];
   const symbols: Collected[] = [];
   const calls: CallRef[] = [];
+  const imports: ImportBinding[] = [];
+  const flags = { hasImports: false };
   const lines = source.split("\n");
   const seen = new Map<string, number>();
   const stack: Collected[] = [];
@@ -423,9 +439,12 @@ function extract(lang: LangId, root: TsNode, source: string): ParsedFile {
       const callee = callFn(node);
       if (callee) {
         const row = node.startPosition.row;
-        calls.push({ callee, argCount: argCountOf(node), line: row, text: (lines[row] ?? "").trim().slice(0, 200), inSymbol: scope.enclosing });
+        const target = node.childForFieldName("function") ?? node.childForFieldName("constructor");
+        const member = target ? target.type !== "identifier" : !!node.childForFieldName("object");
+        calls.push({ callee, member, argCount: argCountOf(node), line: row, text: (lines[row] ?? "").trim().slice(0, 200), inSymbol: scope.enclosing });
       }
     }
+    collectImports(lang, node, imports, flags);
 
     if (!scope.inBody) {
       const def = spec.defs[type];
@@ -509,5 +528,78 @@ function extract(lang: LangId, root: TsNode, source: string): ParsedFile {
     language: lang,
     symbols: symbols.map(({ start: _s, end: _e, children: _c, ...rest }) => rest),
     calls,
+    imports,
+    hasImports: flags.hasImports,
   };
+}
+
+const stringValue = (n: TsNode | null | undefined) => (n ? n.text.replace(/^['"`]|['"`]$/g, "") : undefined);
+
+function collectImports(lang: LangId, node: TsNode, out: ImportBinding[], flags: { hasImports: boolean }): void {
+  if (lang === "typescript" || lang === "tsx" || lang === "javascript") {
+    if (node.type === "import_statement") {
+      flags.hasImports = true;
+      const source = stringValue(node.childForFieldName("source"));
+      if (!source) return;
+      const clause = node.namedChildren.find((c) => c?.type === "import_clause");
+      for (const part of clause?.namedChildren ?? []) {
+        if (!part) continue;
+        if (part.type === "identifier") out.push({ local: part.text, imported: "default", source, kind: "default" });
+        else if (part.type === "namespace_import") {
+          const id = part.namedChildren.find((c) => c?.type === "identifier");
+          if (id) out.push({ local: id.text, imported: "*", source, kind: "namespace" });
+        } else if (part.type === "named_imports") {
+          for (const spec of part.namedChildren) {
+            if (spec?.type !== "import_specifier") continue;
+            const name = spec.childForFieldName("name")?.text;
+            const alias = spec.childForFieldName("alias")?.text;
+            if (name) out.push({ local: alias ?? name, imported: name, source, kind: "named" });
+          }
+        }
+      }
+    } else if (node.type === "export_statement" && node.childForFieldName("source")) {
+      flags.hasImports = true;
+    } else if (node.type === "variable_declarator") {
+      // const { a, b: c } = require("./x");   const x = require("./x");
+      const value = node.childForFieldName("value");
+      if (value?.type !== "call_expression" || value.childForFieldName("function")?.text !== "require") return;
+      const source = stringValue(value.childForFieldName("arguments")?.namedChild(0));
+      if (!source) return;
+      flags.hasImports = true;
+      const name = node.childForFieldName("name");
+      if (name?.type === "identifier") out.push({ local: name.text, imported: "*", source, kind: "namespace" });
+      else if (name?.type === "object_pattern") {
+        for (const p of name.namedChildren) {
+          if (p?.type === "shorthand_property_identifier_pattern") out.push({ local: p.text, imported: p.text, source, kind: "named" });
+          else if (p?.type === "pair_pattern") {
+            const key = p.childForFieldName("key")?.text;
+            const val = p.childForFieldName("value");
+            if (key && val?.type === "identifier") out.push({ local: val.text, imported: key, source, kind: "named" });
+          }
+        }
+      }
+    }
+    return;
+  }
+  if (lang === "python") {
+    if (node.type === "import_statement") {
+      flags.hasImports = true;
+    } else if (node.type === "import_from_statement") {
+      flags.hasImports = true;
+      const source = node.childForFieldName("module_name")?.text;
+      if (!source) return;
+      if (node.namedChildren.some((c) => c?.type === "wildcard_import")) {
+        out.push({ local: "*", imported: "*", source, kind: "wildcard" });
+        return;
+      }
+      for (const n of node.childrenForFieldName("name")) {
+        if (!n) continue;
+        if (n.type === "aliased_import") {
+          const name = n.childForFieldName("name")?.text;
+          const alias = n.childForFieldName("alias")?.text;
+          if (name) out.push({ local: alias ?? name, imported: name, source, kind: "named" });
+        } else out.push({ local: n.text, imported: n.text, source, kind: "named" });
+      }
+    }
+  }
 }

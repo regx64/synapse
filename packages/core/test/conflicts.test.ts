@@ -152,3 +152,24 @@ test("markers resolve non-canonical paths (symlinks here; 8.3 short names on Win
     await core.close();
   }
 });
+
+test("call matching follows imports: aliases count, unrelated same-name functions do not", async () => {
+  const { core, a, b } = await setup();
+  try {
+    write(a.worktree.path, "src/pricing.ts", SHOP["src/pricing.ts"].replace("percent: number): number", "percent: number, cap: number): number"));
+    // Not the changed function: imported from another module, and defined locally.
+    write(b.worktree.path, "src/legacy.ts", `import { applyDiscount } from "./old-pricing";\nexport const legacy = (t: number) => applyDiscount(t, 5);\n`);
+    write(b.worktree.path, "src/local.ts", `import { formatPrice } from "./pricing";\nfunction applyDiscount(t: number, p: number) { return t - p; }\nexport const local = (t: number) => formatPrice(applyDiscount(t, 5));\n`);
+    await core.refreshOwnership();
+    assert.ok(!core.store.getConflicts().some((c) => c.kind === "signature-change"), JSON.stringify(core.store.getConflicts()));
+
+    // The changed function under an alias, imported with the .js extension TypeScript ESM uses.
+    write(b.worktree.path, "src/checkout.ts", `import { applyDiscount as discount } from "./pricing.js";\nexport const checkout = (t: number) => discount(t, 10);\n`);
+    await core.refreshOwnership();
+    const sig = core.store.getConflicts().find((c) => c.kind === "signature-change");
+    assert.ok(sig, "aliased import is matched");
+    assert.deepEqual(sig.callSites?.map((s) => s.path), ["src/checkout.ts"]);
+  } finally {
+    await core.close();
+  }
+});

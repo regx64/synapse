@@ -79,8 +79,15 @@ After ownership changes, across all agents:
 | `same-file` | two agents change different symbols of one file | info |
 
 Conflict ids are stable while a conflict persists, so UIs can track them.
-Name-based call matching can produce false positives across unrelated
-functions with the same name; import resolution is future work.
+
+Call sites are matched through imports for JavaScript/TypeScript and Python:
+a call counts if it is in the same file, or its name (including an alias) is
+imported from a module that resolves to the changed file (relative paths,
+`.js` specifiers for `.ts` files, `index` files, `@/`-style aliases, Python
+relative and dotted modules). A same-name function defined in the calling
+file, or a name imported from elsewhere, does not count. Member calls
+(`obj.method()`) and Go, Rust and Java fall back to matching by name, which
+can produce false positives but does not miss conflicts.
 
 ## Task graph and handoffs
 
