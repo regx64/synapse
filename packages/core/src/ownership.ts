@@ -4,7 +4,7 @@ import type { AgentOwnership, FileChange, FileMarker, OwnedSymbol } from "@synap
 import { diffNumstat, diffRaw, git, readBlob, snapshotWorktree } from "./git.js";
 import type { StateStore } from "./store.js";
 import { parseSource, type ParsedFile } from "./symbols.js";
-import { KeyedSerializer, isInside, nowIso, toPosix } from "./util.js";
+import { KeyedSerializer, isInside, nowIso, realpathLoose, toPosix } from "./util.js";
 
 const MAX_PARSE_BYTES = 1024 * 1024;
 
@@ -125,13 +125,17 @@ export class OwnershipService {
 
   private resolveViewPath(filePath: string): { rel?: string; viewerAgent?: string } {
     if (!path.isAbsolute(filePath)) return { rel: toPosix(path.normalize(filePath)) };
+    // Compare canonical paths: symlinks, and 8.3 short names on Windows, would otherwise give a wrong relative path.
+    const real = realpathLoose(filePath);
     for (const agent of this.store.listAgents()) {
-      if (isInside(agent.worktree.path, filePath)) {
-        return { rel: toPosix(path.relative(agent.worktree.path, filePath)), viewerAgent: agent.id };
+      const wt = realpathLoose(agent.worktree.path);
+      if (isInside(wt, real)) {
+        return { rel: toPosix(path.relative(wt, real)), viewerAgent: agent.id };
       }
     }
-    if (isInside(this.repoRoot, filePath)) {
-      const rel = toPosix(path.relative(this.repoRoot, filePath));
+    const root = realpathLoose(this.repoRoot);
+    if (isInside(root, real)) {
+      const rel = toPosix(path.relative(root, real));
       if (rel.startsWith(".synapse/")) return {};
       return { rel };
     }

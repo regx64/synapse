@@ -134,3 +134,21 @@ test("a new call that already matches the new signature is not a conflict", asyn
     await core.close();
   }
 });
+
+test("markers resolve non-canonical paths (symlinks here; 8.3 short names on Windows)", async () => {
+  const { repo, core, a } = await setup();
+  try {
+    write(a.worktree.path, "src/cart.ts", SHOP["src/cart.ts"].replace("this.items.push(price);", "this.items.push(Math.max(0, price));"));
+    await core.refreshOwnership("alpha");
+    const link = `${repo}-link`;
+    fs.symlinkSync(repo, link, "dir");
+    const markers = await core.ownership.markersFor(path.join(link, "src/cart.ts"));
+    assert.equal(markers.length, 1);
+    assert.equal(markers[0]!.symbol, "Cart.add");
+    // Inside an agent's worktree, through the link: viewer is that agent, so no markers for itself.
+    assert.equal((await core.ownership.markersFor(path.join(link, ".synapse/worktrees/alpha/src/cart.ts"))).length, 0);
+    assert.equal(core.agents.evaluate("alpha", { toolKind: "edit", path: path.join(link, ".synapse/worktrees/alpha/.env") }).decision, "deny");
+  } finally {
+    await core.close();
+  }
+});

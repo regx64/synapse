@@ -6,7 +6,7 @@ import { CORE_API_VERSION, ErrorCodes, RpcError } from "@synapse/protocol";
 import { AcpAgentProcess, type AcpMcpServerStdio, type AcpPermissionOutcome, type AcpPermissionRequest, type AcpPlanUpdate, type AcpSessionUpdate, type AcpToolCallUpdate } from "./acp.js";
 import type { StateStore } from "./store.js";
 import type { WorktreeManager } from "./worktrees.js";
-import { AGENT_COLORS, AGENT_ID_RE, debounce, isInside, nowIso, randomId, toPosix, truncateTail } from "./util.js";
+import { AGENT_COLORS, AGENT_ID_RE, debounce, isInside, nowIso, randomId, realpathLoose, toPosix, truncateTail } from "./util.js";
 import { revParse } from "./git.js";
 import { commandFromRawInput, evaluatePermission, isRisky, matchesAny, mergePolicy, pathFromRawInput, urlFromRawInput, validatePolicy } from "./policy.js";
 import { addSecret, redact } from "./redact.js";
@@ -263,8 +263,10 @@ export class AgentManager {
     const agent = this.require(id);
     let rel = q.path;
     if (rel && path.isAbsolute(rel)) {
-      if (!isInside(agent.worktree.path, rel)) return { decision: "deny", rule: "outside the agent's worktree" };
-      rel = toPosix(path.relative(agent.worktree.path, rel));
+      const wt = realpathLoose(agent.worktree.path);
+      const real = realpathLoose(rel);
+      if (!isInside(wt, real)) return { decision: "deny", rule: "outside the agent's worktree" };
+      rel = toPosix(path.relative(wt, real));
     }
     return evaluatePermission(agent.policy, { ...q, path: rel });
   }
@@ -308,14 +310,16 @@ export class AgentManager {
   private resolveAgentPath(agentId: string, p: string, mode: "read" | "write"): string {
     const agent = this.require(agentId);
     const abs = path.isAbsolute(p) ? p : path.join(agent.worktree.path, p);
-    const inside = isInside(agent.worktree.path, abs);
-    const shown = inside ? toPosix(path.relative(agent.worktree.path, abs)) : p;
+    const wt = realpathLoose(agent.worktree.path);
+    const realAbs = realpathLoose(abs);
+    const inside = isInside(wt, realAbs);
+    const shown = inside ? toPosix(path.relative(wt, realAbs)) : p;
     const deny = (why: string, rule: string) => {
       this.audit(agentId, { toolKind: mode === "read" ? "read" : "edit", title: `${mode} ${shown}`, path: shown, outcome: "denied", by: "policy", rule });
       throw new RpcError(ErrorCodes.InvalidParams, `Access denied: ${why}`);
     };
     if (!inside) deny(`${p} is outside this agent's worktree (${agent.worktree.path})`, "outside the agent's worktree");
-    const rel = toPosix(path.relative(agent.worktree.path, abs));
+    const rel = shown;
     if (rel.split("/")[0] === ".git") deny(".git is managed by Synapse", ".git");
     const prot = matchesAny(agent.policy.protected, rel);
     if (prot) deny(`${rel} is protected by policy (${prot})`, `protected: ${prot}`);

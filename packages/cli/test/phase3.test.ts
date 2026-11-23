@@ -27,7 +27,7 @@ async function turn(id: string, ...s: unknown[]) {
 before(async () => {
   repo = makeRepo({ ...SHOP, "synapse.config.json": JSON.stringify({ decisionLogPath: "docs/decisions.md" }) });
   core = await SynapseCore.open({ workspace: repo, ephemeral: true });
-  const socket = path.join(os.tmpdir(), `synapse-p3-${process.pid}.sock`);
+  const socket = process.platform === "win32" ? `\\\\.\\pipe\\synapse-p3-${process.pid}` : path.join(os.tmpdir(), `synapse-p3-${process.pid}.sock`);
   server = await serve(core, { socket });
   c = await SynapseClient.connect({ workspace: repo, clientName: "phase3" });
   await c.call("agents.add", { preset: "mock", id: "alpha", name: "Alpha", start: true });
@@ -35,9 +35,9 @@ before(async () => {
 });
 
 after(async () => {
-  c.close();
-  await server.close();
-  await core.close();
+  c?.close();
+  await server?.close();
+  await core?.close();
 });
 
 test("permission model: policy decides, the person decides the rest, everything is audited", async () => {
