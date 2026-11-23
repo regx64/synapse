@@ -1,0 +1,8 @@
+{
+  "repo": "https://github.com/microsoft/vscode.git",
+  "tag": "1.147.0",
+  "commit": "8a14f0cc1b08d531eb83255ea3764ae22aa932b5",
+  "releasedAt": "2026-11-18",
+  "node": "24.22.1",
+  "packageManager": "pnpm@12.16.0"
+}

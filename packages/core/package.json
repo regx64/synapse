@@ -1,0 +1,29 @@
+{
+  "name": "@synapse/core",
+  "version": "0.1.0",
+  "description": "synapse-core: the collaboration engine. Runs as a separate process and serves a local JSON-RPC API to every Synapse UI.",
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/src/index.js",
+  "types": "dist/src/index.d.ts",
+  "bin": {
+    "synapse-core": "dist/src/main.js"
+  },
+  "exports": {
+    ".": "./dist/src/index.js",
+    "./main": "./dist/src/main.js",
+    "./testing": "./dist/src/testing.js",
+    "./acp": "./dist/src/acp.js"
+  },
+  "files": [
+    "dist/src"
+  ],
+  "dependencies": {
+    "@synapse/protocol": "0.1.0",
+    "tree-sitter-wasms": "0.1.13",
+    "web-tree-sitter": "0.25.10"
+  },
+  "optionalDependencies": {
+    "@synapse/mock-agent": "0.1.0"
+  }
+}

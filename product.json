@@ -1,0 +1,49 @@
+{
+  "$comment": "Synapse overrides for Code - OSS product.json, merged by build/prepare.mjs. Every name, id and URL that a rename (risk L3) would touch lives in this file. Never use the Visual Studio Code name or logo (risk L4). Set \"updateUrl\" to the deployed build/update-server.mjs once one exists (see docs/release.md); without it, auto-update is off.",
+  "nameShort": "Synapse",
+  "nameLong": "Synapse",
+  "applicationName": "synapse",
+  "dataFolderName": ".synapse-ide",
+  "sharedDataFolderName": ".synapse-ide-shared",
+  "serverApplicationName": "synapse-server",
+  "serverDataFolderName": ".synapse-server",
+  "tunnelApplicationName": "synapse-tunnel",
+  "win32MutexName": "synapse",
+  "win32DirName": "Synapse",
+  "win32NameVersion": "Synapse",
+  "win32RegValueName": "Synapse",
+  "win32AppUserModelId": "Synapse.Synapse",
+  "win32ShellNameShort": "S&ynapse",
+  "win32TunnelServiceMutex": "synapse-tunnelservice",
+  "win32TunnelMutex": "synapse-tunnel",
+  "win32x64AppId": "{{061BF891-1AD5-4DAA-A3D4-EC5420848572}",
+  "win32arm64AppId": "{{39A6BF45-07D7-46C3-9F2C-EBA469F412C9}",
+  "win32x64UserAppId": "{{6A2DA27C-5B4D-4C8E-AB0A-280E9D40765F}",
+  "win32arm64UserAppId": "{{273E2E58-1779-45C2-8230-57AFA999EFEF}",
+  "darwinBundleIdentifier": "dev.synapse.ide",
+  "darwinProfileUUID": "82629511-8C8C-469E-8282-F185CB25E68A",
+  "darwinProfilePayloadUUID": "C236A661-B3A6-427E-8FEE-A2F7E61A3B7F",
+  "linuxDesktopName": "Synapse",
+  "linuxIconName": "synapse",
+  "urlProtocol": "synapse",
+  "licenseName": "MIT",
+  "licenseUrl": "https://github.com/regx64/synapse/blob/main/LICENSE",
+  "serverLicenseUrl": "https://github.com/regx64/synapse/blob/main/LICENSE",
+  "reportIssueUrl": "https://github.com/regx64/synapse/issues/new",
+  "enableTelemetry": false,
+  "extensionsGallery": {
+    "serviceUrl": "https://open-vsx.org/vscode/gallery",
+    "itemUrl": "https://open-vsx.org/vscode/item",
+    "latestUrlTemplate": "https://open-vsx.org/vscode/gallery/{publisher}/{name}/latest",
+    "resourceUrlTemplate": "https://open-vsx.org/vscode/unpkg/{publisher}/{name}/{version}/{path}"
+  },
+  "linkProtectionTrustedDomains": [
+    "https://open-vsx.org"
+  ],
+  "builtInExtensionsEnabledWithAutoUpdates": [],
+  "$remove": [
+    "voiceWsUrl",
+    "webviewContentExternalBaseUrlTemplate"
+  ],
+  "quality": "stable"
+}

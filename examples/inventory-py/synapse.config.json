@@ -1,0 +1,4 @@
+{
+  "testCommand": "python3 -m unittest -q",
+  "decisionLogPath": "docs/decisions.md"
+}

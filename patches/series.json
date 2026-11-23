@@ -1,0 +1,5 @@
+{
+  "$comment": "Core patches to microsoft/vscode, applied in order at build time by build/apply-patches.mjs. Budget: 20 (plan, 'Running the fork' step 3). Each entry needs an owner and a reason. Prefer synapse-core, then the built-in extension, and only then a patch.",
+  "budget": 20,
+  "patches": []
+}

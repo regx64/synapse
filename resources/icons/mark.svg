@@ -1,0 +1,15 @@
+<!-- The Synapse mark: a hub. Three agents (coral, mint, blue) connected to
+     one center, which is what Synapse is: the place agents meet and are
+     coordinated. Drawn in a 1024 box, balanced around 512,512.
+     Colors here are for dark backgrounds; build/icons.mjs recolors it. -->
+<g id="mark">
+  <g stroke="#e9e9ee" stroke-width="36" stroke-linecap="round" fill="none" opacity="0.9">
+    <path d="M512 488 Q 424 362 322 300"/>
+    <path d="M512 488 Q 616 370 702 300"/>
+    <path d="M512 488 Q 522 620 512 730"/>
+  </g>
+  <circle cx="512" cy="488" r="88" fill="#ffffff"/>
+  <circle cx="318" cy="296" r="72" fill="#ff7a59"/>
+  <circle cx="706" cy="296" r="72" fill="#34d399"/>
+  <circle cx="512" cy="736" r="72" fill="#60a5fa"/>
+</g>

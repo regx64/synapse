@@ -1,0 +1,42 @@
+name: Development builds
+
+# Unsigned development builds on all three OSes (phase 1). Signing,
+# notarization and auto-update are added before the public beta (phase 4).
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "41 3 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, platform: linux, arch: x64 }
+          - { os: macos-latest, platform: darwin, arch: arm64 }
+          - { os: windows-latest, platform: win32, arch: x64 }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read pinned upstream toolchain
+        id: pin
+        shell: bash
+        run: echo "node=$(node -p 'require("./build/upstream.json").node')" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ steps.pin.outputs.node }}
+      - name: Linux build dependencies
+        if: matrix.platform == 'linux'
+        run: sudo apt-get update && sudo apt-get install -y libkrb5-dev libx11-dev libxkbfile-dev libsecret-1-dev
+      - run: npm ci && npm run build
+      - run: node build/build.mjs --platform ${{ matrix.platform }} --arch ${{ matrix.arch }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: synapse-${{ matrix.platform }}-${{ matrix.arch }}
+          path: VSCode-${{ matrix.platform }}-${{ matrix.arch }}
+          retention-days: 7

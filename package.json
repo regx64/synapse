@@ -1,0 +1,29 @@
+{
+  "name": "synapse-workspace",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Synapse: an IDE where several AI agents work in one workspace, directed from one screen.",
+  "license": "MIT",
+  "workspaces": [
+    "packages/protocol",
+    "packages/core",
+    "packages/client",
+    "packages/mock-agent",
+    "packages/cli",
+    "extensions/synapse-collab"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc -b packages/protocol packages/core packages/client packages/mock-agent packages/cli && npm run build -w extensions/synapse-collab",
+    "clean": "tsc -b --clean packages/protocol packages/core packages/client packages/mock-agent packages/cli && rm -rf extensions/synapse-collab/dist",
+    "test": "node --test --test-concurrency=1 \"packages/*/dist/test/**/*.test.js\" \"build/test/*.test.mjs\"",
+    "check": "node build/check-patches.mjs && node build/check-branding.mjs",
+    "demo": "node scripts/demo.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "~5.9.3"
+  }
+}

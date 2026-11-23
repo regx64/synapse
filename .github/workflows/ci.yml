@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  core:
+    name: Core, CLI and extension (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    # Windows support for the core (named pipes, worktree paths) is not yet verified.
+    continue-on-error: ${{ matrix.os == 'windows-latest' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: git config --global user.email ci@synapse.invalid && git config --global user.name "Synapse CI"
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
+      - run: npm run typecheck -w extensions/synapse-collab
+      - run: npm run check
+      - name: Extension smoke test in VS Code
+        if: matrix.os == 'ubuntu-latest'
+        run: xvfb-run -a npm run test:smoke -w extensions/synapse-collab
+        env:
+          VSCODE_TEST_VERSION: "1.147.0"
+      - uses: actions/upload-artifact@v4
+        if: matrix.os == 'ubuntu-latest'
+        with:
+          name: synapse-collab-extension
+          path: |
+            extensions/synapse-collab/package.json
+            extensions/synapse-collab/dist
+            extensions/synapse-collab/media
+
+  fork:
+    name: Patches apply to pinned upstream
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci && npm run build
+      - run: node build/get-vscode.mjs
+      - run: node build/apply-patches.mjs
+      - run: node build/prepare.mjs
+      - run: node build/check-branding.mjs

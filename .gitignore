@@ -1,0 +1,11 @@
+node_modules/
+dist/
+*.tsbuildinfo
+*.vsix
+/vscode/
+/VSCode-*/
+.synapse/
+*.log
+.DS_Store
+.vscode-test/
+__pycache__/

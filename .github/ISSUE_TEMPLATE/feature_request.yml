@@ -1,0 +1,21 @@
+name: Feature request
+description: An idea for coordinating agents better
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What goes wrong today when several agents work at once?
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What you would like Synapse to do
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope check
+      options:
+        - label: This is about coordinating agents, not a single-agent feature such as autocomplete or inline chat.

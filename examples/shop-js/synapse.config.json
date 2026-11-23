@@ -1,0 +1,7 @@
+{
+  "testCommand": "npm test",
+  "decisionLogPath": "docs/decisions.md",
+  "policy": {
+    "network": "deny"
+  }
+}

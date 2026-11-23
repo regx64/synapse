@@ -1,0 +1,13 @@
+{
+  "name": "@synapse/protocol",
+  "version": "0.1.0",
+  "description": "Shared contract between synapse-core and its clients: API types and a JSON-RPC 2.0 peer.",
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/src/index.js",
+  "types": "dist/src/index.d.ts",
+  "exports": {
+    ".": "./dist/src/index.js"
+  },
+  "files": ["dist/src"]
+}

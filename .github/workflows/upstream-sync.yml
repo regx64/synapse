@@ -1,0 +1,64 @@
+name: Upstream sync
+
+# When Code - OSS ships a release, try the patch set against it and alert on
+# failure (plan: "Running the fork", step 4). Goal: follow each release within
+# two weeks; Electron and Chromium security fixes arrive the same way.
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - id: upstream
+        name: Compare pinned and latest upstream
+        run: |
+          set +e
+          node build/check-upstream.mjs > upstream.json
+          echo "lag_exit=$?" >> "$GITHUB_OUTPUT"
+          cat upstream.json
+          echo "latest=$(node -p 'require("./upstream.json").latest')" >> "$GITHUB_OUTPUT"
+          echo "behind=$(node -p 'require("./upstream.json").behind')" >> "$GITHUB_OUTPUT"
+      - name: Rehearse the sync against the latest release
+        id: rehearse
+        if: steps.upstream.outputs.behind != '0'
+        run: |
+          start=$(date +%s)
+          npm ci && npm run build
+          node build/get-vscode.mjs --tag "${{ steps.upstream.outputs.latest }}"
+          node build/apply-patches.mjs
+          node build/prepare.mjs
+          node build/check-branding.mjs
+          echo "seconds=$(( $(date +%s) - start ))" >> "$GITHUB_OUTPUT"
+      - name: Open an issue when patches no longer apply or lag exceeds two weeks
+        if: failure() || steps.upstream.outputs.lag_exit == '3'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const latest = "${{ steps.upstream.outputs.latest }}";
+            const title = `Upstream sync needed: Code - OSS ${latest}`;
+            const { data: open } = await github.rest.issues.listForRepo({ ...context.repo, state: "open", labels: "upstream-sync" });
+            if (open.some((i) => i.title === title)) return;
+            await github.rest.issues.create({
+              ...context.repo,
+              title,
+              labels: ["upstream-sync"],
+              body: [
+                `The pinned upstream is behind Code - OSS ${latest}, or the patch set no longer applies to it.`,
+                "",
+                `Run: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+                "",
+                "Record the person-hours this sync takes: it is one of the three numbers that decide gate G3.",
+              ].join("\n"),
+            });
