@@ -1,16 +1,15 @@
-<!-- The Synapse mark: an S split at the middle. Each half is an agent (its
-     node keeps its own color); the signals crossing the gap are the
-     coordination between them. Drawn in a 1024 box centered on 512,512.
+<!-- The Synapse mark: a hub. Three agents (coral, mint, blue) connected to
+     one center, which is what Synapse is: the place agents meet and are
+     coordinated. Drawn in a 1024 box, balanced around 512,512.
      Colors here are for dark backgrounds; build/icons.mjs recolors it. -->
 <g id="mark">
-  <g stroke="#efeaff" stroke-width="70" stroke-linecap="round" fill="none">
-    <path d="M694 338 C 640 270 392 262 358 384 C 340 450 390 476 436 489"/>
-    <path d="M588 535 C 634 548 690 572 668 642 C 634 762 384 760 330 686"/>
+  <g stroke="#e9e9ee" stroke-width="36" stroke-linecap="round" fill="none" opacity="0.9">
+    <path d="M512 488 Q 424 362 322 300"/>
+    <path d="M512 488 Q 616 370 702 300"/>
+    <path d="M512 488 Q 522 620 512 730"/>
   </g>
-  <circle cx="512" cy="512" r="58" fill="#ffc24d" opacity="0.28"/>
-  <circle cx="484" cy="502" r="17" fill="#ffb020"/>
-  <circle cx="512" cy="512" r="20" fill="#ffd27a"/>
-  <circle cx="540" cy="522" r="17" fill="#ffb020"/>
-  <circle cx="694" cy="338" r="66" fill="#ff7a59"/>
-  <circle cx="330" cy="686" r="66" fill="#34d399"/>
+  <circle cx="512" cy="488" r="88" fill="#ffffff"/>
+  <circle cx="318" cy="296" r="72" fill="#ff7a59"/>
+  <circle cx="706" cy="296" r="72" fill="#34d399"/>
+  <circle cx="512" cy="736" r="72" fill="#60a5fa"/>
 </g>

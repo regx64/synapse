@@ -58,7 +58,7 @@ for (const [upstreamPath, generated] of Object.entries(overlay)) {
 // The Windows Start tile manifest hard-codes the upstream name.
 const manifestPath = path.join(VSCODE, "resources", "win32", "VisualElementsManifest.xml");
 const tileManifest = fs.readFileSync(manifestPath, "utf8");
-fs.writeFileSync(manifestPath, tileManifest.replace(/ShortDisplayName="[^"]*"/, `ShortDisplayName="${product.nameShort}"`).replace(/BackgroundColor="[^"]*"/, 'BackgroundColor="#3d33a6"'));
+fs.writeFileSync(manifestPath, tileManifest.replace(/ShortDisplayName="[^"]*"/, `ShortDisplayName="${product.nameShort}"`).replace(/BackgroundColor="[^"]*"/, 'BackgroundColor="#000000"'));
 console.log(`icons: replaced ${replaced} upstream icons`);
 
 // 5. Commit inside vscode/. Code - OSS bakes `git rev-parse HEAD` into the

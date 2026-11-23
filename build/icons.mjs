@@ -21,7 +21,7 @@ const OUT = path.join(ROOT, "resources", "generated");
 // Art
 
 const markSource = fs.readFileSync(path.join(SRC, "mark.svg"), "utf8").replace(/<!--[\s\S]*?-->/g, "").trim();
-const BG_DEFS = `<defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2e2a7a"/><stop offset="1" stop-color="#5b3fd1"/></linearGradient></defs>`;
+const BG_DEFS = `<defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1c1c1f"/><stop offset="1" stop-color="#000000"/></linearGradient></defs>`;
 const svg = (body, w = 1024, h = 1024) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}">${body}</svg>`;
 const scaled = (body, s) => `<g transform="translate(512 512) scale(${s}) translate(-512 -512)">${body}</g>`;
 
@@ -35,7 +35,6 @@ const markOnly = () => svg(scaled(markSource, 1.25));
 /** One-color mark (watermarks, activity bar). */
 function monoMark(color, opacity = 1, scale = 1.25) {
   const body = markSource
-    .replace(/<circle[^>]*opacity="0\.28"[^>]*\/>/, "")
     .replace(/(stroke|fill)="#[0-9a-fA-F]{3,6}"/g, (_m, attr) => `${attr}="${color}"`);
   return svg(`<g opacity="${opacity}">${scaled(body, scale)}</g>`);
 }
@@ -43,14 +42,14 @@ function monoMark(color, opacity = 1, scale = 1.25) {
 /** File-type icon: a document with the extension and a small Synapse badge. No third-party logos. */
 function fileIcon(label) {
   const size = label.length <= 2 ? 250 : label.length === 3 ? 200 : 160;
-  const lines = [380, 450, 520, 590].map((y, i) => `<rect x="300" y="${y}" width="${i % 2 ? 300 : 400}" height="34" rx="17" fill="#d8d4ee"/>`).join("");
+  const lines = [380, 450, 520, 590].map((y, i) => `<rect x="300" y="${y}" width="${i % 2 ? 300 : 400}" height="34" rx="17" fill="#dcdce2"/>`).join("");
   const text = label
-    ? `<text x="500" y="${label.length <= 2 ? 600 : 580}" text-anchor="middle" font-family="Inter, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-weight="800" font-size="${size}" fill="#4a3cc0" letter-spacing="-4">${label}</text>`
+    ? `<text x="500" y="${label.length <= 2 ? 600 : 580}" text-anchor="middle" font-family="Inter, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-weight="800" font-size="${size}" fill="#1b1b1f" letter-spacing="-4">${label}</text>`
     : lines;
   return svg(
     `${BG_DEFS}` +
-      `<path d="M210 60 H640 L840 260 V914 Q840 964 790 964 H260 Q210 964 210 914 Z" fill="#fbfbfe" stroke="#c9c4e6" stroke-width="16"/>` +
-      `<path d="M640 60 V210 Q640 260 690 260 H840 Z" fill="#e3def8" stroke="#c9c4e6" stroke-width="16" stroke-linejoin="round"/>` +
+      `<path d="M210 60 H640 L840 260 V914 Q840 964 790 964 H260 Q210 964 210 914 Z" fill="#fcfcfd" stroke="#c8c8d0" stroke-width="16"/>` +
+      `<path d="M640 60 V210 Q640 260 690 260 H840 Z" fill="#e6e6eb" stroke="#c8c8d0" stroke-width="16" stroke-linejoin="round"/>` +
       text +
       `<g transform="translate(590 640) scale(0.36)">${squareBody()}</g>`,
   );
@@ -62,10 +61,10 @@ function innoBig(w, h) {
   const cx = w / 2;
   const cy = h * 0.36;
   return svg(
-    `<defs><linearGradient id="v" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2e2a7a"/><stop offset="1" stop-color="#5b3fd1"/></linearGradient></defs>` +
+    `<defs><linearGradient id="v" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1c1c1f"/><stop offset="1" stop-color="#000000"/></linearGradient></defs>` +
       `<rect width="${w}" height="${h}" fill="url(#v)"/>` +
       `<g transform="translate(${cx} ${cy}) scale(${s * 1.3}) translate(-512 -512)">${markSource}</g>` +
-      `<text x="${cx}" y="${h * 0.62}" text-anchor="middle" font-family="Inter, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-weight="700" font-size="${w * 0.17}" fill="#efeaff">Synapse</text>`,
+      `<text x="${cx}" y="${h * 0.62}" text-anchor="middle" font-family="Inter, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-weight="700" font-size="${w * 0.17}" fill="#f2f2f5">Synapse</text>`,
     w,
     h,
   );
