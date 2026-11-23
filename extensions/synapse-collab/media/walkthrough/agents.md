@@ -1,6 +1,9 @@
 # Add two agents
 
-Synapse speaks the Agent Client Protocol. The Claude and Codex presets run each vendor's own agent with **your** login or API key; Synapse never pays for or proxies model usage.
+Synapse speaks the Agent Client Protocol. The Claude and Codex presets run each vendor's own agent with **your** credentials; Synapse never pays for, proxies or sees them.
+
+- **Claude** needs `ANTHROPIC_API_KEY` (or Bedrock / Vertex AI credentials). Anthropic's terms do not let tools built on its Agent SDK offer a Claude subscription login.
+- **Codex** uses `OPENAI_API_KEY`, or the sign-in you made with the `codex` CLI.
 
 Every agent gets:
 

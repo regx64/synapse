@@ -10,8 +10,9 @@ import type { SynapseConfig } from "./config.js";
  * with the nightly compatibility test, not implicitly.
  *
  * Only official ACP paths are used (risk L5): each adapter runs the vendor's
- * own agent under the user's own login or API key. Synapse never pays for or
- * proxies model usage.
+ * own agent with the user's own credentials. Synapse never pays for, proxies
+ * or handles model credentials. See docs/agent-terms.md for the vendor terms
+ * behind each preset.
  */
 const BUILTIN: PresetInfo[] = [
   {
@@ -20,15 +21,22 @@ const BUILTIN: PresetInfo[] = [
     command: "npx",
     args: ["-y", "@agentclientprotocol/claude-agent-acp@0.109.1"],
     color: "#d97757",
-    notes: "Claude Code through its ACP adapter. Uses your Claude subscription login or ANTHROPIC_API_KEY.",
+    notes: "Claude through its ACP adapter (built on the Claude Agent SDK). Needs your own ANTHROPIC_API_KEY, or Amazon Bedrock / Google Vertex AI credentials.",
+    // Anthropic does not allow third-party tools built on the Agent SDK to
+    // offer Claude.ai (subscription) login; they must use API keys.
+    requiresEnv: {
+      anyOf: ["ANTHROPIC_API_KEY", "CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX"],
+      reason:
+        "Anthropic's terms require tools built on the Claude Agent SDK to use API-key authentication, not a Claude subscription login. Set ANTHROPIC_API_KEY (from the Claude Console), or CLAUDE_CODE_USE_BEDROCK / CLAUDE_CODE_USE_VERTEX with that provider's credentials.",
+    },
   },
   {
     id: "codex",
     name: "Codex",
     command: "npx",
-    args: ["-y", "@zed-industries/codex-acp@0.16.0"],
+    args: ["-y", "@agentclientprotocol/codex-acp@2.9.0"],
     color: "#10a37f",
-    notes: "Codex CLI through its ACP adapter. Uses your ChatGPT login or OPENAI_API_KEY.",
+    notes: "Codex through its ACP adapter. Uses OPENAI_API_KEY (or CODEX_API_KEY), or the sign-in you made with Codex's own CLI; Synapse never handles it.",
   },
   {
     id: "gemini",

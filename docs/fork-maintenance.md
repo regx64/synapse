@@ -38,9 +38,19 @@ needs a machine or CI runner with the upstream toolchain (see
    with an owner and a reason.
 
 **Budget: 20 core patches** (`build/check-patches.mjs`, part of `npm run check`).
-Current count: **1**: `0001-publisher-from-product.patch` makes the Windows
-and macOS file version info and the Windows installer take the publisher,
-copyright and URL from `product.json` instead of Microsoft's. The rest of
+Current count: **2**:
+
+- `0001-publisher-from-product.patch` makes the Windows and macOS file
+  version info and the Windows installer take the publisher, copyright and
+  URL from `product.json` instead of Microsoft's.
+- `0002-remove-builtin-copilot.patch` keeps the GitHub Copilot extension, the
+  Copilot CLI runtime and SDK packages and the `copilot` CLI shim out of the
+  desktop build, and makes `chat.disableAIFeatures` default to `true`, so the
+  Copilot chat setup and the agent host (which needs the SDK) stay off. The
+  server (`reh`) build still contains Copilot; Synapse does not ship a server
+  yet.
+
+The rest of
 the branding is `product.json` and the icon overlay; telemetry needs no patch
 because Code - OSS sends telemetry only when `product.json` sets
 `enableTelemetry` (see `src/vs/platform/telemetry/common/telemetryUtils.ts`),
@@ -110,22 +120,20 @@ names it.
 
 ## Remaining upstream branding
 
-[`branding-audit.md`](branding-audit.md) (from `node build/audit-branding.mjs`)
-lists what users can still see. For 1.147.0: 375 UI strings that name VS Code
-or Microsoft (mostly setting descriptions, many in the Agents and Copilot
-features), 188 help links to Microsoft sites, 107 strings in built-in
-extensions (almost all the Copilot extension) and 17 `product.json` values
-(Copilot URLs, the publisher of three MIT Microsoft extensions bundled from
-GitHub releases, the "VS Code" keymap name).
+After the upstream build, `build/rebrand.mjs` replaces "VS Code", "Visual
+Studio Code" and "Code - OSS" with the product name in every UI message
+(`out/nls.messages.json`) and in the built-in extensions' names, descriptions
+and settings text. It is a data rewrite, not a code patch. It keeps phrases
+that name Microsoft's real products (VS Code for the Web, the Stable and
+Insiders editions, the VS Code marketplace), so they stay true.
 
-None of it is a Microsoft logo, and most reads as a description of upstream
-behavior; still, the plan says not to use the VS Code name in the product.
-Options, cheapest first: decide what to do with the built-in Copilot (removes
-most of the extension strings and URLs); rewrite "VS Code" to the product name
-in the built NLS message bundle after the upstream build (no core patch, but
-needs a reviewed list, since some strings mean the real VS Code, such as
-importing its settings); point help links at Synapse documentation once it
-exists.
+[`branding-audit.md`](branding-audit.md) (from `node build/audit-branding.mjs`)
+lists what is left after that: "Microsoft" where it means Microsoft's own
+services (Microsoft account sign-in, the three MIT Microsoft debugger
+extensions bundled from GitHub releases), help links to Microsoft's
+documentation (they work; point them at Synapse documentation once it
+exists), and the Copilot URLs in `product.json`, unreachable with AI features
+off. Translations from language packs are not rewritten.
 
 ## Extensions: Open VSX, not the Visual Studio Marketplace
 
@@ -149,14 +157,14 @@ Extensions published by Microsoft on Open VSX under open-source licenses
 Synapse recommends them. Missing extensions: ask publishers to list on Open
 VSX, or install a `.vsix` manually (risk L2).
 
-## Open question: the built-in Copilot
+## The built-in Copilot: removed
 
-Code - OSS 1.147 contains the GitHub Copilot extension and runtime as built-in
-parts of the build (`extensions/copilot`, `build/lib/copilot.ts`), and
-`product.json` names `GitHub.copilot` as the default chat agent. Removing it
-would take core patches. Synapse currently leaves it in place and only clears
-`builtInExtensionsEnabledWithAutoUpdates`. Whether to ship, disable or patch
-it out is a product and licensing decision to make before the public beta.
+Code - OSS 1.147 builds the GitHub Copilot extension and runtime into every
+app (`extensions/copilot`, `build/lib/copilot.ts`). Synapse removes them with
+patch 0002 (see above), and `build/check-output-licenses.mjs` fails the build
+if any of it is still in the app. `product.json` keeps upstream's
+`defaultChatAgent` entry, because workbench code reads it unconditionally;
+with AI features off, nothing uses it.
 
 ## Build and distribution
 
