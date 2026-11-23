@@ -8,12 +8,12 @@ recorded here; "not verified" means written but not yet run end to end.
 | Item | State |
 | --- | --- |
 | Build repo: pinned upstream tag, patch-apply script, `product.json`, telemetry off, Open VSX | Done. Steps fetch → patch → prepare → branding check ran against Code - OSS 1.147.0 |
-| Development builds for Linux, macOS, Windows in CI | Written (`dev-build.yml`); **not verified**: the full upstream compile has not run yet |
+| Development builds for Linux, macOS, Windows in CI | Done: the first full Code - OSS 1.147.0 builds succeeded on Linux x64, macOS arm64 and Windows x64 (2026-11-23, `dev-build.yml`); unsigned artifacts. Not yet launched and checked by hand |
 | Built-in extension skeleton: board panel, commands, status bar | Done (beyond skeleton: markers, diagnostics, review panel). Smoke-tested in VS Code 1.147.0 (`npm run test:smoke -w extensions/synapse-collab`): activates, starts the core with the editor's runtime, shows a two-agent conflict in the Problems panel, registers its commands, and applies an agent policy edited as JSON. The board (all five tabs) and the review panel (blocked, clean and merged reviews) were rendered in Chromium from real core state and checked by eye. |
 | synapse-core skeleton: separate process, local JSON-RPC API, state store, event stream | Done |
 | Rehearse one upstream sync and measure it | Automated in `upstream-sync.yml`; no newer upstream release exists yet to rehearse against |
 
-G1 numbers so far: **0 core patches**; sync time and 3-OS builds not yet measured.
+G1 numbers so far: **0 core patches**; dev builds on 3 OSes pass (about 7 minutes on Linux and macOS, 12 on Windows); upstream sync time not yet measured.
 
 ## Phase 2: MVP
 
@@ -77,7 +77,7 @@ Done criteria (50 beta users, retention measurement) are outside what code can d
   commands with their own tools. Synapse sees those edits (file watching and
   snapshots) but cannot stop a shell command from writing outside the
   worktree. That needs the phase 3 permission model and OS sandboxing.
-- **Windows** is not yet verified (CI runs it as non-blocking).
+- **Windows file metadata.** Upstream's Windows packaging writes "Microsoft Corporation" as the company name into bundled native binaries' version info (`patchWin32DependenciesTask` in `build/gulpfile.vscode.ts`). Changing it needs a core patch; not done yet.
 - **The built-in Copilot** in Code - OSS 1.147 is an open decision; see
   [fork maintenance](fork-maintenance.md#open-question-the-built-in-copilot).
 - **Same-user processes.** An agent's shell can read `.synapse/core.json`
