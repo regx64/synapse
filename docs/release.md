@@ -35,7 +35,7 @@ patch**:
   build/update-server.mjs --feed update-feed --port 8080`).
 
 The commit clients compare is the one `build/prepare.mjs` creates inside
-`vscode/` ("Synapse <version>"), so every Synapse release is distinct even on
+the Code - OSS checkout ("Synapse <version>"), so every Synapse release is distinct even on
 the same upstream tag.
 
 To turn auto-update on:

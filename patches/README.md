@@ -21,9 +21,9 @@ handles both (Code - OSS only sends telemetry when `enableTelemetry` is true).
 ## Adding a patch
 
 ```bash
-node build/get-vscode.mjs          # fetch the pinned upstream tag into ./vscode
+node build/get-vscode.mjs          # fetch the pinned upstream tag into ../synapse-vscode
 node build/apply-patches.mjs       # apply the existing series
-cd vscode && <edit files> && git diff > ../patches/NN-short-name.patch
+cd ../synapse-vscode && <edit files> && git diff > ../synapse/patches/NN-short-name.patch
 ```
 
 Then add an entry to `series.json`:

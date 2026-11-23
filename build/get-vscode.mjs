@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// Fetches the pinned upstream Code - OSS tag into ./vscode (shallow) and verifies its commit.
+// Fetches the pinned upstream Code - OSS tag (shallow) into ../synapse-vscode, or
+// SYNAPSE_VSCODE_DIR, and verifies its commit.
 //   node build/get-vscode.mjs [--tag 1.148.0]   (a different tag is for sync rehearsals)
 import * as fs from "node:fs";
 import { VSCODE, capture, fail, run, upstream } from "./lib.mjs";

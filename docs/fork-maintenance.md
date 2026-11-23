@@ -7,8 +7,11 @@ time, the way VSCodium does.
 ## Layout
 
 `microsoft/vscode` is never committed here. A build fetches the tag pinned in
-[`build/upstream.json`](../build/upstream.json) into `./vscode` (git-ignored)
-and turns it into Synapse:
+[`build/upstream.json`](../build/upstream.json) into `../synapse-vscode`, a
+folder next to this repository (or `SYNAPSE_VSCODE_DIR`), and turns it into
+Synapse. It must stay outside this repository: inside it, TypeScript would
+pick up this repository's `node_modules/@types` while compiling VS Code. The
+app is written next to that folder (`../VSCode-<platform>-<arch>`).
 
 | Step | Script | What |
 | --- | --- | --- |

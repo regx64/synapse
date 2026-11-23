@@ -5,7 +5,20 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-export const VSCODE = process.env.SYNAPSE_VSCODE_DIR ? path.resolve(process.env.SYNAPSE_VSCODE_DIR) : path.join(ROOT, "vscode");
+// The Code - OSS checkout lives OUTSIDE this repository (default: a sibling
+// folder). Inside it, TypeScript would pick up this repository's
+// node_modules/@types (for example @types/vscode) while compiling VS Code
+// and fail with duplicate declarations.
+export const VSCODE = process.env.SYNAPSE_VSCODE_DIR ? path.resolve(process.env.SYNAPSE_VSCODE_DIR) : path.join(path.dirname(ROOT), "synapse-vscode");
+{
+  const rel = path.relative(ROOT, VSCODE);
+  if (rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel))) {
+    console.error(`error: the Code - OSS checkout (${VSCODE}) must be outside the Synapse repository; set SYNAPSE_VSCODE_DIR to another folder.`);
+    process.exit(1);
+  }
+}
+/** Where the upstream build writes the app: next to the Code - OSS checkout. */
+export const buildOutput = (platform, arch) => path.join(path.dirname(VSCODE), `VSCode-${platform}-${arch}`);
 export const readJson = (p) => JSON.parse(fs.readFileSync(p, "utf8"));
 export const writeJson = (p, v) => fs.writeFileSync(p, JSON.stringify(v, null, "\t") + "\n");
 export const upstream = () => readJson(path.join(ROOT, "build", "upstream.json"));

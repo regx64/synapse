@@ -42,6 +42,9 @@ jobs:
         include: ${{ fromJSON(needs.plan.outputs.matrix) }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 180
+    env:
+      # Outside the workspace: see build/lib.mjs.
+      SYNAPSE_VSCODE_DIR: ${{ github.workspace }}/../synapse-vscode
     steps:
       - uses: actions/checkout@v4
       - name: Read pinned upstream toolchain
@@ -56,6 +59,9 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libkrb5-dev libx11-dev libxkbfile-dev libsecret-1-dev
       - run: npm ci && npm run build
       - run: node build/build.mjs --platform ${{ matrix.platform }} --arch ${{ matrix.arch }}
+      - name: Move the build into the workspace (artifact paths cannot use ..)
+        shell: bash
+        run: mv "$SYNAPSE_VSCODE_DIR/../VSCode-${{ matrix.platform }}-${{ matrix.arch }}" .
       - uses: actions/upload-artifact@v4
         with:
           name: synapse-${{ matrix.platform }}-${{ matrix.arch }}
