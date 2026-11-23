@@ -8,6 +8,11 @@ on:
     - cron: "17 6 * * *"
   workflow_dispatch:
 
+# One run at a time per branch: a newer run replaces a queued or running one.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
   issues: write
