@@ -67,10 +67,21 @@ Record these at every sync; together they decide gate G3:
 `product.json` changes the name, icons' names, data folders (`~/.synapse-ide`),
 URL protocol (`synapse://`), Windows and macOS ids, and turns telemetry off.
 `build/check-branding.mjs` fails on Microsoft names in identity fields, on any
-Visual Studio Marketplace reference, when telemetry is on, and when upstream's
-`LICENSE.txt` or `ThirdPartyNotices.txt` would not ship. Product icons are
-still upstream's Code - OSS defaults; Synapse artwork is a to-do before the
-public beta (put it in `resources/`).
+Visual Studio Marketplace reference, when telemetry is on, when upstream's
+`LICENSE.txt` or `ThirdPartyNotices.txt` would not ship, and when any upstream
+icon was not replaced.
+
+## Icons
+
+All Synapse icons come from one source, `resources/icons/mark.svg`.
+`node build/icons.mjs` (needs Playwright's Chromium) renders the app icon,
+Windows/Linux/web icons, file-type icons, installer images, the empty-editor
+watermark and the extension's activity bar icon into `resources/generated/`,
+with `overlay.json` mapping each file to the upstream file it replaces.
+`build/prepare.mjs` copies them over upstream's (assets, not code, so they do
+not count against the patch budget) and sets the Windows Start tile name and
+color. If an upstream release renames or drops an icon, prepare fails and
+names it.
 
 ## Extensions: Open VSX, not the Visual Studio Marketplace
 

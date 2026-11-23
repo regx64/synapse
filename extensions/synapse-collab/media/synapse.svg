@@ -1,1 +1,12 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="5" cy="6" r="2.2"/><circle cx="19" cy="6" r="2.2"/><circle cx="12" cy="18" r="2.2"/><path d="M7 7.2l3.6 8.6M17 7.2l-3.6 8.6M7.2 6h9.6"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024"><g opacity="1"><g transform="translate(512 512) scale(1.4) translate(-512 -512)"><g id="mark">
+  <g stroke="#000000" stroke-width="70" stroke-linecap="round" fill="none">
+    <path d="M694 338 C 640 270 392 262 358 384 C 340 450 390 476 436 489"/>
+    <path d="M588 535 C 634 548 690 572 668 642 C 634 762 384 760 330 686"/>
+  </g>
+  
+  <circle cx="484" cy="502" r="17" fill="#000000"/>
+  <circle cx="512" cy="512" r="20" fill="#000000"/>
+  <circle cx="540" cy="522" r="17" fill="#000000"/>
+  <circle cx="694" cy="338" r="66" fill="#000000"/>
+  <circle cx="330" cy="686" r="66" fill="#000000"/>
+</g></g></g></svg>

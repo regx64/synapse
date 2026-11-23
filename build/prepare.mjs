@@ -45,7 +45,23 @@ for (const f of ["LICENSE.txt", "ThirdPartyNotices.txt"]) {
   if (!fs.existsSync(path.join(VSCODE, f))) fail(`upstream ${f} is missing; refusing to build without license notices`);
 }
 fs.copyFileSync(path.join(ROOT, "LICENSE"), path.join(VSCODE, "SYNAPSE-LICENSE.txt"));
-// 4. Commit inside vscode/. Code - OSS bakes `git rev-parse HEAD` into the
+// 4. Icons (generated from resources/icons by build/icons.mjs) replace upstream's.
+//    These are asset files, not code, so they do not count against the patch budget.
+const overlay = readJson(path.join(ROOT, "resources", "generated", "overlay.json"));
+let replaced = 0;
+for (const [upstreamPath, generated] of Object.entries(overlay)) {
+  const dst = path.join(VSCODE, upstreamPath);
+  if (!fs.existsSync(dst)) fail(`upstream no longer has ${upstreamPath}; update build/icons.mjs for this Code - OSS version`);
+  fs.copyFileSync(path.join(ROOT, "resources", "generated", generated), dst);
+  replaced++;
+}
+// The Windows Start tile manifest hard-codes the upstream name.
+const manifestPath = path.join(VSCODE, "resources", "win32", "VisualElementsManifest.xml");
+const tileManifest = fs.readFileSync(manifestPath, "utf8");
+fs.writeFileSync(manifestPath, tileManifest.replace(/ShortDisplayName="[^"]*"/, `ShortDisplayName="${product.nameShort}"`).replace(/BackgroundColor="[^"]*"/, 'BackgroundColor="#3d33a6"'));
+console.log(`icons: replaced ${replaced} upstream icons`);
+
+// 5. Commit inside vscode/. Code - OSS bakes `git rev-parse HEAD` into the
 //    build as its commit, which the auto-updater compares; this gives every
 //    Synapse build (version + patches + product.json) its own commit.
 const env = { ...process.env, GIT_AUTHOR_NAME: "Synapse", GIT_AUTHOR_EMAIL: "synapse@localhost", GIT_COMMITTER_NAME: "Synapse", GIT_COMMITTER_EMAIL: "synapse@localhost" };

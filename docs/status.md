@@ -78,7 +78,6 @@ Done criteria (50 beta users, retention measurement) are outside what code can d
   snapshots) but cannot stop a shell command from writing outside the
   worktree. That needs the phase 3 permission model and OS sandboxing.
 - **Windows** is not yet verified (CI runs it as non-blocking).
-- **Product icons** are still upstream's Code - OSS defaults.
 - **The built-in Copilot** in Code - OSS 1.147 is an open decision; see
   [fork maintenance](fork-maintenance.md#open-question-the-built-in-copilot).
 - **Same-user processes.** An agent's shell can read `.synapse/core.json`

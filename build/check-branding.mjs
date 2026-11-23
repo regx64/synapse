@@ -30,6 +30,26 @@ if (fs.existsSync(path.join(VSCODE, "product.json"))) {
   const shipped = readJson(path.join(VSCODE, "product.json"));
   if (shipped.nameLong !== product.nameLong) problems.push("vscode/product.json is not prepared (run node build/prepare.mjs)");
   for (const f of ["LICENSE.txt", "ThirdPartyNotices.txt"]) if (!fs.existsSync(path.join(VSCODE, f))) problems.push(`vscode/${f} is missing: upstream notices must ship`);
+  // Every upstream icon must have been replaced with Synapse's.
+  const overlay = readJson(path.join(ROOT, "resources", "generated", "overlay.json"));
+  for (const [upstreamPath, generated] of Object.entries(overlay)) {
+    const a = fs.readFileSync(path.join(VSCODE, upstreamPath));
+    const b = fs.readFileSync(path.join(ROOT, "resources", "generated", generated));
+    if (!a.equals(b)) problems.push(`vscode/${upstreamPath} is still upstream's icon`);
+  }
+  const manifest = fs.readFileSync(path.join(VSCODE, "resources", "win32", "VisualElementsManifest.xml"), "utf8");
+  if (/Code - OSS|Visual Studio Code/.test(manifest)) problems.push("the Windows tile manifest still shows the upstream name");
+}
+
+// The icon sources and their generated files must be in the repository.
+if (!fs.existsSync(path.join(ROOT, "resources", "icons", "mark.svg"))) problems.push("resources/icons/mark.svg is missing");
+const overlayFile = path.join(ROOT, "resources", "generated", "overlay.json");
+if (!fs.existsSync(overlayFile)) problems.push("resources/generated is missing: run node build/icons.mjs");
+else {
+  const required = ["resources/darwin/code.icns", "resources/win32/code.ico", "resources/linux/code.png", "src/vs/workbench/browser/media/code-icon.svg"];
+  const overlay = readJson(overlayFile);
+  for (const r of required) if (!overlay[r]) problems.push(`no Synapse replacement for upstream ${r}`);
+  for (const g of Object.values(overlay)) if (!fs.existsSync(path.join(ROOT, "resources", "generated", g))) problems.push(`resources/generated/${g} is missing: run node build/icons.mjs`);
 }
 
 if (problems.length) fail(problems.join("\n"));

@@ -1,3 +1,5 @@
+<img src="resources/generated/preview/app-1024.png" width="96" alt="Synapse icon">
+
 # Synapse
 
 English | [한국어](README.ko.md)
@@ -152,6 +154,7 @@ in `.synapse/config.json`:
 | `packages/mock-agent` | A scripted ACP agent for tests and demos (no model calls) |
 | `extensions/synapse-collab` | The built-in extension: the first UI |
 | `build/`, `patches/`, `product.json` | The fork: VSCodium-style build scripts, the core patch set (budget 20), branding |
+| `resources/icons`, `resources/generated` | The Synapse mark and every icon generated from it (`node build/icons.mjs`) |
 | `examples/` | Small repositories (JavaScript, Python) with two-agent scenarios |
 | `docs/` | Plan, getting started, user guide, architecture, API, fork maintenance, privacy, release, status |
 

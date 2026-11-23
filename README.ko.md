@@ -1,3 +1,5 @@
+<img src="resources/generated/preview/app-1024.png" width="96" alt="Synapse icon">
+
 # Synapse
 
 [English](README.md) | 한국어
@@ -150,6 +152,7 @@ node build/build.mjs
 | `packages/mock-agent` | 테스트와 데모용 스크립트 ACP 에이전트(모델 호출 없음) |
 | `extensions/synapse-collab` | 내장 확장: 첫 번째 UI |
 | `build/`, `patches/`, `product.json` | 포크: VSCodium 방식 빌드 스크립트, 코어 패치(예산 20개, 현재 0개), 브랜딩, 업데이트 서버 |
+| `resources/icons`, `resources/generated` | Synapse 마크와 그것으로 생성한 모든 아이콘(`node build/icons.mjs`) |
 | `examples/` | 두 에이전트 시나리오가 있는 작은 저장소(JavaScript, Python) |
 | `docs/` | 계획, 시작하기, 사용자 가이드, 아키텍처, API, 포크 운영, 개인정보, 릴리스, 현황 |
 

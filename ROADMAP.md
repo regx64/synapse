@@ -28,7 +28,7 @@ what happens next, not the calendar. Current state in detail:
 - First full IDE build on Linux, macOS and Windows; first upstream sync.
 - Type-aware call matching for member calls (`obj.method()`) and Go, Rust, Java (imports are already resolved for JS/TS and Python).
 - OS-level sandboxing for agents' own shell tools (policies today cover what goes through Synapse).
-- Synapse artwork; a decision on the built-in Copilot.
+- A decision on the built-in Copilot.
 
 ## Not planned
 
