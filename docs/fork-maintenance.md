@@ -103,7 +103,10 @@ names it.
   (`"SEE LICENSE IN <file>"`, such as the GitHub Copilot CLI, whose license
   allows redistribution only unmodified and with the license included) must
   ship that file; a missing one is copied from the Code - OSS checkout, or the
-  build fails. It also checks both notice files are in the app.
+  build fails. It also checks both notice files are in the app. This is not
+  hypothetical: the 1.147.0 Windows build left out `LICENSE.md` of
+  `@github/copilot@1.0.73` (`extensions/copilot/node_modules`), and the check
+  put it back.
 
 ## Remaining upstream branding
 

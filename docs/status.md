@@ -13,6 +13,8 @@ recorded here; "not verified" means written but not yet run end to end.
 | synapse-core skeleton: separate process, local JSON-RPC API, state store, event stream | Done |
 | Rehearse one upstream sync and measure it | Automated in `upstream-sync.yml`; no newer upstream release exists yet to rehearse against |
 
+The license check on the built app (`build/check-output-licenses.mjs`) found that upstream's build leaves out the Copilot CLI's `LICENSE.md`, which its license requires to ship; the build now copies it in.
+
 G1 numbers so far: **1 core patch** (publisher and copyright from `product.json`); dev builds on 3 OSes pass (about 7 minutes on Linux and macOS, 12 on Windows); upstream sync time not yet measured.
 
 ## Phase 2: MVP
