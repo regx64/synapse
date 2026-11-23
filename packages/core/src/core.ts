@@ -11,6 +11,7 @@ import { CollabService } from "./collab.js";
 import { DEFAULT_POLICY, mergePolicy } from "./policy.js";
 import { addSecret } from "./redact.js";
 import { loadConfig, type SynapseConfig } from "./config.js";
+import { detectDecisionConflicts } from "./anchors.js";
 import { computeTextConflicts, detectConflicts } from "./conflicts.js";
 import { currentBranch, ensureLocalExclude, repoRootOf, revParse } from "./git.js";
 import { OwnershipService } from "./ownership.js";
@@ -113,8 +114,15 @@ export class SynapseCore {
     // Agents restored from disk are stopped; refresh what they own.
     for (const a of core.store.listAgents()) void core.ownership.refresh(a.id).catch(() => {});
     core.scheduleConflictCheck();
+    // Pinned decisions: notice when the base branch moves (a merge, or the person's own commits).
+    core.baseWatch = setInterval(() => {
+      void core.collab.checkDecisionAnchors().catch((e: Error) => core.log(`decision anchor check failed: ${e.message}`));
+    }, 10_000);
+    core.baseWatch.unref();
     return core;
   }
+
+  private baseWatch?: NodeJS.Timeout;
 
   defaultPolicy(): AgentPolicy {
     return mergePolicy(DEFAULT_POLICY, this.config.policy);
@@ -187,6 +195,8 @@ export class SynapseCore {
         details: (id) => this.ownership.detailsFor(id),
         textConflicts,
       });
+      await this.collab.checkDecisionAnchors().catch((e: Error) => this.log(`decision anchor check failed: ${e.message}`));
+      conflicts.push(...detectDecisionConflicts(this.store.listDecisions(), this.store.listAgents(), ownership));
       this.store.setConflicts(conflicts);
     });
     return this.store.getConflicts();
@@ -245,7 +255,12 @@ export class SynapseCore {
       "review.list": () => this.store.listReviews(),
       "review.diff": async (p) => ({ diff: await this.reviews.diff(req(p, "id"), p.path) }),
       "review.fileContent": async (p) => ({ content: await this.reviews.fileContent(req(p, "id"), req(p, "path"), p.side ?? "merged") }),
-      "review.merge": (p) => this.reviews.merge(req(p, "id"), { resetAgents: p.resetAgents, force: p.force }),
+      "review.merge": async (p) => {
+        const r = await this.reviews.merge(req(p, "id"), { resetAgents: p.resetAgents, force: p.force });
+        // The base moved: flag decisions whose pinned code the merge changed.
+        await this.collab.checkDecisionAnchors().catch((e: Error) => this.log(`decision anchor check failed: ${e.message}`));
+        return r;
+      },
       "review.discard": (p) => this.reviews.discard(req(p, "id")),
       "agents.setPolicy": (p) => this.agents.setPolicy(req(p, "id"), req(p, "policy")),
       "policy.evaluate": (p) => this.agents.evaluate(req(p, "agentId"), req(p, "query")),
@@ -265,7 +280,22 @@ export class SynapseCore {
       "messages.reject": (p) => this.collab.reject(req(p, "id")),
       "decisions.list": () => this.collab.listDecisions(),
       "decisions.add": (p) => this.collab.addDecision("human", p),
-      "decisions.resolve": (p) => this.collab.resolveDecision(req(p, "id"), req(p, "status")),
+      "decisions.resolve": (p) => {
+        const d = this.collab.resolveDecision(req(p, "id"), req(p, "status"));
+        this.scheduleConflictCheck(); // only accepted decisions raise conflicts
+        return d;
+      },
+      "decisions.pin": async (p) => {
+        const d = await this.collab.pinDecision(req(p, "id"), { path: req(p, "path"), symbol: p.symbol, line: p.line });
+        this.scheduleConflictCheck();
+        return d;
+      },
+      "decisions.unpin": (p) => {
+        const d = this.collab.unpinDecision(req(p, "id"), { path: req(p, "path"), symbol: p.symbol });
+        this.scheduleConflictCheck();
+        return d;
+      },
+      "decisions.repin": (p) => this.collab.repinDecision(req(p, "id")),
       "core.shutdown": () => {
         setImmediate(() => this.emitShutdown());
         return null;
@@ -296,6 +326,7 @@ export class SynapseCore {
   async close(): Promise<void> {
     if (this.closed) return;
     this.closed = true;
+    if (this.baseWatch) clearInterval(this.baseWatch);
     for (const r of this.refreshers.values()) r.cancel();
     this.scheduleConflictCheck.cancel();
     await this.agents.shutdown();

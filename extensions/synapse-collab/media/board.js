@@ -77,13 +77,14 @@
 
     const held = state.messages.filter((m) => m.status === "held").length;
     const proposed = state.decisions.filter((d) => d.status === "proposed").length;
+    const stale = state.decisions.filter((d) => d.status === "accepted" && (d.anchors ?? []).some((a) => a.state !== "current")).length;
     const review = state.tasks.filter((t) => t.status === "review").length;
     const risky = state.audit.filter((e) => e.risky && e.outcome === "ran-unasked").length;
     const tabs = [
       ["agents", `Agents${errors.length ? ` ⚠${errors.length}` : ""}`],
       ["tasks", `Tasks${review ? ` •${review}` : ""}`],
       ["messages", `Messages${held ? ` ⏸${held}` : ""}`],
-      ["decisions", `Decisions${proposed ? ` •${proposed}` : ""}`],
+      ["decisions", `Decisions${proposed ? ` •${proposed}` : ""}${stale ? ` ⚠${stale}` : ""}`],
       ["audit", `Audit${risky ? ` ⚠${risky}` : ""}`],
     ];
     root.append(
@@ -231,13 +232,16 @@
     const title = input({ placeholder: "Title, e.g. Money representation" });
     const decision = /** @type {HTMLTextAreaElement} */ (h("textarea", { rows: 2, placeholder: "The decision, e.g. Store amounts as integer cents" }));
     const rationale = input({ placeholder: "Why (optional)" });
+    const pins = input({ placeholder: "Applies to (optional), e.g. src/pricing.ts#applyDiscount, src/money.ts" });
     root.append(
       h("details", { class: "card form", open: state.decisions.length === 0 }, [
         h("summary", {}, ["Record a decision"]),
         title,
         decision,
         rationale,
-        button("Add (accepted)", () => title.value.trim() && decision.value.trim() && post("addDecision", { title: title.value, decision: decision.value, rationale: rationale.value }), "primary"),
+        pins,
+        h("div", { class: "muted small" }, ["Or pin from the editor: right-click a function and choose \"Pin a Decision Here\". Synapse flags the decision when that code changes."]),
+        button("Add (accepted)", () => title.value.trim() && decision.value.trim() && post("addDecision", { title: title.value, decision: decision.value, rationale: rationale.value, pins: pins.value }), "primary"),
       ]),
     );
     if (!state.decisions.length) root.append(h("p", { class: "muted" }, ["Project memory shared with agents. Accepted decisions are included in every task prompt; agents can propose new ones."]));
@@ -248,15 +252,40 @@
           h("div", { class: "row" }, [h("strong", {}, [`${d.id} · ${d.title}`]), h("span", { class: "muted small" }, [d.status])]),
           h("div", {}, [d.decision]),
           d.rationale ? h("div", { class: "muted small" }, [`Why: ${d.rationale}`]) : null,
+          renderAnchors(d),
           h("div", { class: "muted small" }, [`by ${agentName(state, d.author)}${d.supersedes ? ` · supersedes ${d.supersedes}` : ""}`]),
           d.status === "proposed"
             ? h("div", { class: "row" }, [button("Accept", () => post("decisionAction", { id: d.id, status: "accepted" }), "primary"), button("Reject", () => post("decisionAction", { id: d.id, status: "rejected" }))])
-            : d.status === "accepted"
+            : d.status === "accepted" && !(d.anchors ?? []).some((a) => a.state !== "current")
               ? h("div", { class: "row" }, [button("Supersede", () => post("decisionAction", { id: d.id, status: "superseded" }), "link")])
               : null,
         ]),
       );
     }
+  }
+
+  /** Where a decision applies, and whether that code changed since it was pinned. */
+  function renderAnchors(d) {
+    const anchors = d.anchors ?? [];
+    if (!anchors.length) return null;
+    const stale = anchors.filter((a) => a.state !== "current");
+    const label = (a) => (a.symbol ? `${a.path} › ${a.symbol}` : a.path);
+    return h("div", { class: `anchors${stale.length && d.status === "accepted" ? " stale" : ""}` }, [
+      ...anchors.map((a) =>
+        h("div", { class: "row small" }, [
+          h("a", { href: "#", class: "anchor", onclick: (e) => (e.preventDefault(), post("openFile", { path: a.path })) }, [`📌 ${label(a)}`]),
+          a.state === "changed" ? h("span", { class: "badge warn" }, ["code changed"]) : a.state === "missing" ? h("span", { class: "badge warn" }, ["gone from base"]) : null,
+          button("Unpin", () => post("decisionUnpin", { id: d.id, path: a.path, symbol: a.symbol }), "link"),
+        ]),
+      ),
+      stale.length && d.status === "accepted"
+        ? h("div", { class: "row" }, [
+            h("span", { class: "small" }, ["The code changed since this decision was pinned. Does it still hold?"]),
+            button("Still holds", () => post("decisionRepin", { id: d.id }), "primary"),
+            button("Supersede", () => post("decisionAction", { id: d.id, status: "superseded" })),
+          ])
+        : null,
+    ]);
   }
 
   function renderAudit(state) {

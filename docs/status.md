@@ -51,7 +51,7 @@ vary from run to run, and with two weeks of internal use.
 | --- | --- |
 | Task graph: split a goal into subtasks, assign, dependencies | Done: tasks with assignee, dependencies (cycles rejected), scope, auto-start; board tab and CLI |
 | Handoffs and messages in a structured format (C2) | Done: typed messages with files and symbols; automatic handoffs on "done" use ownership facts; delivered as labeled data; flagged messages held for the person |
-| Shared decision log | Done: propose / accept / supersede; accepted decisions in every task prompt; Markdown file |
+| Shared decision log | Done: propose / accept / supersede; accepted decisions in every task prompt; Markdown file. Decisions can be pinned to files and symbols: flagged when that code changes on the base branch, and a `decision` warning when an agent changes it before merge |
 | Permission model with human approval | Done for everything that goes through Synapse: per-agent file, command and network rules, approvals, audit log, warnings for risky commands run unasked. Not an OS sandbox (see Known limits) |
 | Agent-side tools | Synapse MCP server per agent session, with a restricted per-agent-token API |
 

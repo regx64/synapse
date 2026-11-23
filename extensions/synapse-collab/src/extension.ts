@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import * as path from "node:path";
 import * as vscode from "vscode";
 import type { AgentState } from "@synapse/client";
 import { BoardProvider } from "./board.js";
@@ -178,6 +179,28 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     const doc = await vscode.workspace.openTextDocument(PolicyFileSystem.uri(a));
     await vscode.languages.setTextDocumentLanguage(doc, "jsonc");
     await vscode.window.showTextDocument(doc);
+  });
+  register("synapse.pinDecision", async () => {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor) return;
+    const rel = path.relative(repoRoot, editor.document.uri.fsPath).split(path.sep).join("/");
+    if (!rel || rel.startsWith("..") || path.isAbsolute(rel)) {
+      void vscode.window.showWarningMessage("Synapse: open a file of this repository (not an agent's worktree) to pin a decision.");
+      return;
+    }
+    const decisions = (conn.state?.decisions ?? []).filter((d) => d.status === "accepted" || d.status === "proposed");
+    if (!decisions.length) {
+      void vscode.window.showInformationMessage("Synapse: record a decision on the board's Decisions tab first.");
+      return;
+    }
+    const pick = await vscode.window.showQuickPick(
+      decisions.map((d) => ({ label: `${d.id} · ${d.title}`, description: d.status === "proposed" ? "proposed" : "", detail: d.decision, id: d.id })),
+      { placeHolder: "Pin which decision to the code at the cursor?" },
+    );
+    if (!pick) return;
+    const d = await conn.call("decisions.pin", { id: pick.id, path: rel, line: editor.selection.active.line });
+    const a = d.anchors?.at(-1);
+    void vscode.window.showInformationMessage(`Synapse: ${d.id} pinned to ${a?.symbol ?? a?.path ?? rel}. You'll be told when that code changes.`);
   });
   register("synapse.newTask", async () => {
     const title = await vscode.window.showInputBox({ prompt: "Task title" });

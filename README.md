@@ -47,7 +47,9 @@ replaces only the UI. See [the plan](docs/plan.md).
 - **Structured messages and a decision log.** Agents message each other and
   propose decisions through a Synapse MCP server; their text is delivered as
   data, and anything that reads like instructions is held for you. Accepted
-  decisions go into every task prompt.
+  decisions go into every task prompt. Pin a decision to the functions it is
+  about, and Synapse tells you when an agent changes that code, and when it
+  changes on your branch, so you can check the decision still holds.
 - **Permission policies.** Per-agent rules for files, commands and network;
   everything else comes to you; everything is audited.
 - **No telemetry.** Synapse collects nothing about you; crash reports are

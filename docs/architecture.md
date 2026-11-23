@@ -77,6 +77,7 @@ After ownership changes, across all agents:
 | `signature-change` | agent A changes the signature of (or removes) a function or method; agent B's added or modified code calls that name with an argument count that does not fit the new signature | error |
 | `text-conflict` | `git merge-tree --write-tree` of the two snapshots reports conflicts | error |
 | `same-file` | two agents change different symbols of one file | info |
+| `decision` | an agent changes (or removes) a file or symbol that an accepted decision is pinned to | warning |
 
 Conflict ids are stable while a conflict persists, so UIs can track them.
 

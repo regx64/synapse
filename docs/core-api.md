@@ -61,8 +61,11 @@ failing tests), `-32004` not found.
 | `messages.send` | `{ to, subject, body?, kind?, taskId?, files?, symbols? }` | `AgentMessage` (from the person) |
 | `messages.release` / `messages.reject` | `{ id }` | `AgentMessage` (held messages) |
 | `decisions.list` | – | `Decision[]` |
-| `decisions.add` | `{ title, decision, rationale?, tags?, supersedes?, status? }` | `Decision` (accepted by default) |
+| `decisions.add` | `{ title, decision, rationale?, tags?, supersedes?, status?, pins? }` | `Decision` (accepted by default) |
 | `decisions.resolve` | `{ id, status: "accepted" \| "rejected" \| "superseded" }` | `Decision` |
+| `decisions.pin` | `{ id, path, symbol?, line? }` | `Decision`. Fingerprints the file or symbol on the base branch; with `line` and no `symbol`, pins the innermost symbol at that line of the file in the main checkout |
+| `decisions.unpin` | `{ id, path, symbol? }` | `Decision` |
+| `decisions.repin` | `{ id }` | `Decision`. The person confirms the decision still holds: re-fingerprints every anchor |
 | `core.shutdown` | – | `null` (stops agents, then the process) |
 
 ## Events

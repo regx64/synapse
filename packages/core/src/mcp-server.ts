@@ -53,7 +53,17 @@ const TOOLS = [
     description: "Propose a project decision (a convention, an interface, a trade-off). The person accepts or rejects it.",
     inputSchema: {
       type: "object",
-      properties: { title: { type: "string" }, decision: { type: "string" }, rationale: { type: "string" }, tags: { type: "array", items: { type: "string" } } },
+      properties: {
+        title: { type: "string" },
+        decision: { type: "string" },
+        rationale: { type: "string" },
+        tags: { type: "array", items: { type: "string" } },
+        pins: {
+          type: "array",
+          items: { type: "string" },
+          description: 'Code the decision is about, as "path" or "path#Symbol" (e.g. "src/pricing.ts#applyDiscount"). Synapse flags the decision when that code changes.',
+        },
+      },
       required: ["title", "decision"],
       additionalProperties: false,
     },
@@ -107,8 +117,21 @@ function describeMessages(list: AgentMessage[]) {
   };
 }
 
+/** "path" or "path#Symbol". Kept here so this small bundle does not pull in the parser. */
+function parsePinSpec(spec: string): { path: string; symbol?: string } {
+  const at = spec.lastIndexOf("#");
+  return at > 0 ? { path: spec.slice(0, at), symbol: spec.slice(at + 1) } : { path: spec };
+}
+
 function describeDecisions(list: Decision[]) {
-  return list.map((d) => ({ id: d.id, title: d.title, decision: d.decision, rationale: d.rationale, tags: d.tags }));
+  return list.map((d) => ({
+    id: d.id,
+    title: d.title,
+    decision: d.decision,
+    rationale: d.rationale,
+    tags: d.tags,
+    appliesTo: d.anchors?.map((a) => (a.symbol ? `${a.path}#${a.symbol}` : a.path)),
+  }));
 }
 
 async function main(): Promise<void> {
@@ -142,7 +165,8 @@ async function main(): Promise<void> {
         case "synapse_decisions":
           return text(describeDecisions(await c.request<Decision[]>("agent.decisions")));
         case "synapse_propose_decision": {
-          const d = await c.request<Decision>("agent.proposeDecision", args);
+          const pins = Array.isArray(args?.pins) ? (args.pins as unknown[]).map((p) => parsePinSpec(String(p))) : undefined;
+          const d = await c.request<Decision>("agent.proposeDecision", { ...args, pins });
           return text(`Proposed decision ${d.id}; the person will accept or reject it.`);
         }
         case "synapse_complete_task": {

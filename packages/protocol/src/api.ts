@@ -157,7 +157,9 @@ export type ConflictKind =
   /** The agents' changes would not merge cleanly as text. */
   | "text-conflict"
   /** Two agents edit the same file but different symbols (informational). */
-  | "same-file";
+  | "same-file"
+  /** An agent changes code that an accepted decision is pinned to. */
+  | "decision";
 
 export type Severity = "info" | "warning" | "error";
 
@@ -185,6 +187,8 @@ export interface Conflict {
   message: string;
   /** For signature-change conflicts. */
   signature?: { owner: string; old?: string; new?: string };
+  /** For decision conflicts: the decision whose pinned code is being changed. */
+  decisionId?: string;
   callSites?: CallSite[];
   firstSeen: string;
 }
@@ -386,6 +390,33 @@ export interface Decision {
   supersedes?: string;
   createdAt: string;
   decidedAt?: string;
+  /**
+   * Code this decision is about. When that code changes on the base branch,
+   * the anchor is marked `changed` so the person can check that the decision
+   * still holds; while an agent is changing it, a `decision` conflict warns
+   * before merge.
+   */
+  anchors?: DecisionAnchor[];
+}
+
+/** Where to pin a decision: a file, or one symbol in it. */
+export interface DecisionPin {
+  /** Repo-relative path with forward slashes. */
+  path: string;
+  /** Qualified symbol name, e.g. "Cart.add". Absent: the whole file. */
+  symbol?: string;
+}
+
+export interface DecisionAnchor extends DecisionPin {
+  /** Hash of the pinned code (whitespace-normalized) when it was pinned or last confirmed. */
+  fingerprint: string;
+  /** Base-branch commit the fingerprint was taken at. */
+  pinnedCommit: string;
+  pinnedAt: string;
+  /** Result of the last check against the base branch. */
+  state: "current" | "changed" | "missing";
+  /** Base commit of the last check. */
+  checkedCommit: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -553,10 +584,19 @@ export interface CoreMethods {
   "decisions.list": { params: void; result: Decision[] };
   /** Decisions the person adds are accepted unless `status` says otherwise. */
   "decisions.add": {
-    params: { title: string; decision: string; rationale?: string; tags?: string[]; supersedes?: string; status?: Decision["status"] };
+    params: { title: string; decision: string; rationale?: string; tags?: string[]; supersedes?: string; status?: Decision["status"]; pins?: DecisionPin[] };
     result: Decision;
   };
   "decisions.resolve": { params: { id: string; status: "accepted" | "rejected" | "superseded" }; result: Decision };
+  /**
+   * Pins a decision to a file or symbol, fingerprinted on the base branch.
+   * With `line` (0-based) and no `symbol`, the innermost symbol at that line
+   * of the file in the main checkout is used.
+   */
+  "decisions.pin": { params: { id: string; path: string; symbol?: string; line?: number }; result: Decision };
+  "decisions.unpin": { params: { id: string; path: string; symbol?: string }; result: Decision };
+  /** The person confirms the decision still holds for the code as it is now: re-fingerprints every anchor at the base branch. */
+  "decisions.repin": { params: { id: string }; result: Decision };
 
   "core.shutdown": { params: void; result: null };
 }
@@ -592,7 +632,7 @@ export interface AgentMethods {
     result: AgentMessage;
   };
   "agent.decisions": { params: void; result: Decision[] };
-  "agent.proposeDecision": { params: { title: string; decision: string; rationale?: string; tags?: string[] }; result: Decision };
+  "agent.proposeDecision": { params: { title: string; decision: string; rationale?: string; tags?: string[]; pins?: DecisionPin[] }; result: Decision };
   /** The agent reports its task finished; the person still confirms it. */
   "agent.completeTask": { params: { taskId: string; summary: string }; result: Task };
 }

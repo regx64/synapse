@@ -31,6 +31,7 @@ that agent's color.
 | signature-change | one agent changes or removes a function; another agent's new code calls it in a way the new signature does not accept |
 | text-conflict | the changes will not merge as text |
 | same-file | different parts of one file (information only) |
+| decision | an agent changes code that an accepted decision is pinned to (warning; see [pinning decisions](#pinning-decisions-to-code)) |
 
 ## Tasks
 
@@ -89,6 +90,38 @@ synapse decision add Errors --decision "API errors use RFC 9457 problem details"
 
 ```bash
 synapse decision accept D-3
+```
+
+### Pinning decisions to code
+
+A decision can say which code it is about: a file, or a function, method or
+class in it. Synapse fingerprints that code on the base branch (ignoring
+whitespace) and then watches it:
+
+- **An agent changes pinned code** in its worktree: a `decision` warning
+  shows on the board, in the Problems panel and in the combined review, before
+  anything merges. It does not block the merge.
+- **The pinned code changes on the base branch** (a merge, or your own
+  commits): the decision is marked *code changed* (or *gone from base*) on the
+  Decisions tab and in the Markdown log, until you confirm it still holds
+  (**Still holds**, `synapse decision repin`) or supersede it.
+
+Agents see where each accepted decision applies in their task prompts, and
+can pin the decisions they propose (`pins` in `synapse_propose_decision`).
+
+In the editor, right-click a function and choose **Pin a Decision Here**. From
+the CLI:
+
+```bash
+synapse decision pin D-3 src/api/errors.ts#problemDetails
+```
+
+```bash
+synapse decision add Money --decision "Amounts are integer cents" --pin src/money.ts,src/cart.ts#Cart
+```
+
+```bash
+synapse decision repin D-3
 ```
 
 ## Permissions

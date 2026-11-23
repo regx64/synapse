@@ -129,6 +129,11 @@
         "command": "synapse.initConfig",
         "title": "Create synapse.config.json",
         "category": "Synapse"
+      },
+      {
+        "command": "synapse.pinDecision",
+        "title": "Pin a Decision Here\u2026",
+        "category": "Synapse"
       }
     ],
     "menus": {
@@ -149,10 +154,21 @@
           "group": "navigation@3"
         }
       ],
+      "editor/context": [
+        {
+          "command": "synapse.pinDecision",
+          "when": "resourceScheme == file",
+          "group": "synapse@1"
+        }
+      ],
       "commandPalette": [
         {
           "command": "synapse.agentMenu",
           "when": "false"
+        },
+        {
+          "command": "synapse.pinDecision",
+          "when": "editorIsOpen"
         }
       ]
     },
