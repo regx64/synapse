@@ -41,7 +41,13 @@ the same upstream tag.
 To turn auto-update on:
 
 1. Deploy `build/update-server.mjs` somewhere with HTTPS.
-2. Set `"updateUrl": "https://<host>"` in `product.json` (quality is `stable`).
+2. Set `"updateUrl": "https://<host>"` and `"quality": "stable"` in
+   `product.json`. Upstream's updater does nothing without a quality.
+   Setting it also turns on the build step that pre-generates the Node.js
+   compile cache by launching the built app, which plain Code - OSS builds
+   skip. On Linux CI that needs unprivileged user namespaces (`sudo sysctl -w
+   kernel.apparmor_restrict_unprivileged_userns=0`) and a display
+   (`xvfb-run`), so check the release workflow before tagging.
 3. On each release, unpack the draft's `update-feed.tar.gz` into the server's
    feed directory, then publish the release.
 
