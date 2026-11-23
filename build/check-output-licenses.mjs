@@ -22,10 +22,10 @@ if (!outDir || !fs.existsSync(outDir)) {
   process.exit(2);
 }
 
-/** The app's resources/app folder (macOS: inside the .app bundle; Windows: may sit in a versioned folder). */
+/** The app's resources/app folder (macOS: <Name>.app/Contents/Resources/app; Windows: may sit in a versioned folder). */
 function findAppRoot(dir, depth = 0) {
   if (depth > 6) return undefined;
-  if (path.basename(dir) === "app" && path.basename(path.dirname(dir)) === "resources" && fs.existsSync(path.join(dir, "package.json"))) return dir;
+  if (path.basename(dir) === "app" && path.basename(path.dirname(dir)).toLowerCase() === "resources" && fs.existsSync(path.join(dir, "package.json"))) return dir;
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
     if (!e.isDirectory() || e.isSymbolicLink() || e.name === "node_modules") continue;
     const found = findAppRoot(path.join(dir, e.name), depth + 1);

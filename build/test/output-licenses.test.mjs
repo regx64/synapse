@@ -9,10 +9,10 @@ import { fileURLToPath } from "node:url";
 const script = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "check-output-licenses.mjs");
 const write = (f, s) => (fs.mkdirSync(path.dirname(f), { recursive: true }), fs.writeFileSync(f, s));
 
-function fixture({ withLicense, withNotices = true }) {
+function fixture({ withLicense, withNotices = true, mac = false }) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "synapse-out-"));
-  const out = path.join(root, "VSCode-linux-x64");
-  const app = path.join(out, "resources", "app");
+  const out = path.join(root, mac ? "VSCode-darwin-arm64" : "VSCode-linux-x64");
+  const app = mac ? path.join(out, "Synapse.app", "Contents", "Resources", "app") : path.join(out, "resources", "app");
   write(path.join(app, "package.json"), "{}");
   if (withNotices) {
     write(path.join(app, "ThirdPartyNotices.txt"), "notices");
@@ -55,4 +55,12 @@ test("fails when third-party notices are missing", () => {
   const r = run(f.out, f.checkout);
   assert.equal(r.status, 1);
   assert.match(r.stderr, /ThirdPartyNotices/);
+});
+
+test("finds the app inside a macOS bundle (Contents/Resources/app)", () => {
+  const f = fixture({ withLicense: false, mac: true });
+  const r = run(f.out, f.checkout, "--fix");
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /Synapse\.app[\\/]Contents[\\/]Resources[\\/]app/);
+  assert.equal(fs.readFileSync(path.join(f.cli, "LICENSE.md"), "utf8"), "GitHub Copilot CLI License");
 });
