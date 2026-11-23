@@ -19,7 +19,7 @@ Two UIs, one core, three external parts.
             │  Conflict detection ─ same symbol, signature change, text    │
             │  ReviewService ─ integration worktree, tests, merge          │
             │  CollabService ─ task graph, messages, decision log          │
-            │  Policy ─ per-agent permissions, audit; Telemetry (opt-in)   │
+            │  Policy ─ per-agent permissions, audit                       │
             └───────┬─────────────────────────┬──────────────────────┬─────┘
                     │ ACP over stdio           │ git                  │ (IDE only)
                     ▼                          ▼                      ▼

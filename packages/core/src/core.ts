@@ -10,7 +10,6 @@ import { AgentManager } from "./agents.js";
 import { CollabService } from "./collab.js";
 import { DEFAULT_POLICY, mergePolicy } from "./policy.js";
 import { addSecret } from "./redact.js";
-import { Telemetry } from "./telemetry.js";
 import { loadConfig, type SynapseConfig } from "./config.js";
 import { computeTextConflicts, detectConflicts } from "./conflicts.js";
 import { currentBranch, ensureLocalExclude, repoRootOf, revParse } from "./git.js";
@@ -29,8 +28,6 @@ export interface CoreOptions {
   /** Keep state in memory only (tests). */
   ephemeral?: boolean;
   log?: (msg: string) => void;
-  /** Directory for per-user files (telemetry preference, crash reports). Default ~/.synapse-ide. */
-  home?: string;
 }
 
 type Handler<M extends CoreMethodName> = (params: CoreMethods[M]["params"]) => Promise<CoreMethods[M]["result"]> | CoreMethods[M]["result"];
@@ -56,7 +53,6 @@ export class SynapseCore {
   readonly agents: AgentManager;
   readonly reviews: ReviewService;
   readonly collab: CollabService;
-  readonly telemetry: Telemetry;
   /** Where the API is served; set by serve(). Agents' MCP servers connect back here. */
   socket?: string;
   private readonly agentTokens = new Map<string, string>();
@@ -76,7 +72,6 @@ export class SynapseCore {
     this.log = opts.log ?? (() => {});
     this.config = config;
     this.store = new StateStore(repoRoot, baseRef, opts.ephemeral ? undefined : path.join(repoRoot, ".synapse", "state.json"), () => this.defaultPolicy());
-    this.telemetry = new Telemetry(opts.home ?? (opts.ephemeral ? fs.mkdtempSync(path.join(os.tmpdir(), "synapse-home-")) : undefined));
     this.worktrees = new WorktreeManager(repoRoot);
     this.ownership = new OwnershipService(this.store, repoRoot, this.log);
     this.agents = new AgentManager({
@@ -96,7 +91,6 @@ export class SynapseCore {
       refreshOwnership: (id) => this.ownership.refresh(id),
       log: this.log,
     });
-    this.store.on("event", (ev: CoreEvent) => this.recordTelemetry(ev));
     this.reviews = new ReviewService({
       store: this.store,
       ownership: this.ownership,
@@ -153,36 +147,6 @@ export class SynapseCore {
     return { name: "synapse", command: process.execPath, args: [script], env };
   }
 
-  /** Counts and enums only; see telemetry.ts. */
-  private recordTelemetry(ev: CoreEvent): void {
-    const d = ev.data as Record<string, unknown>;
-    switch (ev.type) {
-      case "agent.added":
-        return this.telemetry.record("agent.added", { preset: String(d.preset ?? "custom") });
-      case "review.updated":
-        if (d.status === "ready" || d.status === "merged" || d.status === "conflicted")
-          return this.telemetry.record(`review.${d.status}`, { agents: (d.agents as unknown[]).length, files: (d.files as unknown[]).length, testsPassed: (d.tests as { passed?: boolean } | undefined)?.passed ?? false });
-        return;
-      case "conflicts.updated": {
-        const counts: Record<string, number> = {};
-        for (const c of ev.data as Conflict[]) counts[c.kind] = (counts[c.kind] ?? 0) + 1;
-        return this.telemetry.record("conflicts", counts);
-      }
-      case "approval.resolved":
-        return this.telemetry.record("approval.resolved", { by: String((d.resolution as { by?: string } | undefined)?.by ?? "unknown") });
-      case "audit.added":
-        if (d.by === "policy") return this.telemetry.record("policy.decision", { outcome: String(d.outcome) });
-        return;
-      case "task.updated":
-        if (d.status === "done" || d.status === "failed") return this.telemetry.record(`task.${d.status}`, { deps: (d.dependsOn as unknown[]).length });
-        return;
-      case "message.updated":
-        if (d.status === "held") return this.telemetry.record("message.held", { kind: String(d.kind) });
-        return;
-      default:
-        return;
-    }
-  }
 
   async reloadConfig(): Promise<void> {
     this.config = await loadConfig(this.repoRoot);
@@ -302,15 +266,6 @@ export class SynapseCore {
       "decisions.list": () => this.collab.listDecisions(),
       "decisions.add": (p) => this.collab.addDecision("human", p),
       "decisions.resolve": (p) => this.collab.resolveDecision(req(p, "id"), req(p, "status")),
-      "telemetry.status": () => this.telemetry.status(),
-      "telemetry.setEnabled": (p) => {
-        try {
-          return this.telemetry.setEnabled(!!p?.enabled, p?.endpoint);
-        } catch (err) {
-          throw new RpcError(ErrorCodes.InvalidParams, (err as Error).message);
-        }
-      },
-      "telemetry.preview": () => this.telemetry.preview(),
       "core.shutdown": () => {
         setImmediate(() => this.emitShutdown());
         return null;
@@ -344,8 +299,6 @@ export class SynapseCore {
     for (const r of this.refreshers.values()) r.cancel();
     this.scheduleConflictCheck.cancel();
     await this.agents.shutdown();
-    await this.telemetry.flush();
-    this.telemetry.close();
     this.store.flush();
   }
 }

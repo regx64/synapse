@@ -126,11 +126,6 @@
         "category": "Synapse"
       },
       {
-        "command": "synapse.telemetry",
-        "title": "Telemetry Settings\u2026",
-        "category": "Synapse"
-      },
-      {
         "command": "synapse.initConfig",
         "title": "Create synapse.config.json",
         "category": "Synapse"
@@ -208,7 +203,7 @@
           {
             "id": "agents",
             "title": "Add two agents",
-            "description": "Each agent gets its own git worktree and branch. Use your own Claude or Codex login.\n[Add an agent](command:synapse.addAgent)",
+            "description": "Each agent gets its own git worktree and branch. Claude needs your ANTHROPIC_API_KEY; Codex uses your OPENAI_API_KEY or Codex sign-in.\n[Add an agent](command:synapse.addAgent)",
             "media": {
               "markdown": "media/walkthrough/agents.md"
             }

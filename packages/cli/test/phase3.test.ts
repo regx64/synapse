@@ -160,21 +160,6 @@ test("messages from the person ride along with the next prompt", async () => {
   assert.match(b.turn!.prompt, /Prices are in cents now/);
 });
 
-test("telemetry is off by default, records only counts when on, and can be previewed", async () => {
-  let s = await c.call("telemetry.status");
-  assert.equal(s.enabled, false);
-  assert.equal((await c.call("telemetry.preview")).length, 0);
-  s = await c.call("telemetry.setEnabled", { enabled: true });
-  assert.equal(s.enabled, true);
-  await c.call("agents.add", { preset: "mock", id: "gamma" });
-  const events = await waitFor(async () => {
-    const e = await c.call("telemetry.preview");
-    return e.length ? e : undefined;
-  }, "telemetry event");
-  assert.deepEqual(events.find((e) => e.name === "agent.added")?.props, { preset: "mock" });
-  assert.doesNotMatch(JSON.stringify(events), new RegExp(repo.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")), "no paths");
-  await assert.rejects(c.call("telemetry.setEnabled", { enabled: true, endpoint: "http://insecure" }), /https/);
-  s = await c.call("telemetry.setEnabled", { enabled: false });
-  assert.equal(s.queued, 0);
-  await c.call("agents.remove", { id: "gamma" });
+test("there is no telemetry API", async () => {
+  await assert.rejects(c.call("telemetry.status" as never), (e: RpcError) => e.code === ErrorCodes.MethodNotFound);
 });

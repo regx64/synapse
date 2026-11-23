@@ -137,8 +137,8 @@ shows files, owners, conflicts and test output. Merging fast-forwards your
 branch; it requires a clean checkout, an unmoved base, passing tests and no
 open conflicts (or `--force`).
 
-## Telemetry
+## Privacy
 
-Off by default. `synapse telemetry enable` turns on anonymous counts (never
-code, paths, prompts or messages); `synapse telemetry preview` shows exactly
-what would be sent. Details: [privacy and data flow](privacy-and-data-flow.md).
+Synapse collects no telemetry and sends nothing about you. Crash reports of
+the core stay in `~/.synapse-ide/crash-reports/`. Details:
+[privacy and data flow](privacy-and-data-flow.md).

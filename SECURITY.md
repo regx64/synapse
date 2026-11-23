@@ -12,7 +12,7 @@ Especially relevant:
   permission requests, the Synapse MCP server);
 - one agent's output reaching another agent or the person as instructions
   (prompt injection through messages, handoffs, decisions);
-- secrets leaking into logs, crash reports, telemetry or `.synapse/`;
+- secrets leaking into logs, crash reports or `.synapse/`;
 - the local core API being reachable by other users or without the token.
 
 ## What Synapse protects, and what it does not

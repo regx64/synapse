@@ -63,9 +63,6 @@ failing tests), `-32004` not found.
 | `decisions.list` | – | `Decision[]` |
 | `decisions.add` | `{ title, decision, rationale?, tags?, supersedes?, status? }` | `Decision` (accepted by default) |
 | `decisions.resolve` | `{ id, status: "accepted" \| "rejected" \| "superseded" }` | `Decision` |
-| `telemetry.status` | – | `TelemetryStatus` |
-| `telemetry.setEnabled` | `{ enabled, endpoint? }` | `TelemetryStatus` |
-| `telemetry.preview` | – | `TelemetryEvent[]` (exactly what would be sent) |
 | `core.shutdown` | – | `null` (stops agents, then the process) |
 
 ## Events

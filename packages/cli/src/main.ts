@@ -61,8 +61,6 @@ Permissions
   policy <agent> --try CMD           what the policy decides for a command
   audit [--agent ID] [--limit N]     what agents ran, and who allowed it
 
-Telemetry (off by default)
-  telemetry status|enable|disable|preview [--endpoint URL]
 
 Review
   review [--agents a,b] [--no-tests] combine agents' work, test it, show the result
@@ -388,22 +386,6 @@ async function run(c: SynapseClient, cmd: string, sub: string | undefined, rest:
           ? list.map((e) => `  ${e.at.slice(11, 19)} ${e.agentId.padEnd(8)} ${e.outcome.padEnd(11)} by ${e.by.padEnd(6)} ${e.risky ? "RISKY " : ""}${e.command ?? e.path ?? e.title}${e.rule ? `  (${e.rule})` : ""}`).join("\n")
           : "audit log is empty",
       );
-      return 0;
-    }
-    case "telemetry": {
-      const action = sub ?? "status";
-      if (action === "preview") {
-        const events = await c.call("telemetry.preview");
-        out(events, () => (events.length ? JSON.stringify(events, null, 2) : "nothing queued"));
-        return 0;
-      }
-      const s =
-        action === "enable"
-          ? await c.call("telemetry.setEnabled", { enabled: true, endpoint: v.endpoint as string | undefined })
-          : action === "disable"
-            ? await c.call("telemetry.setEnabled", { enabled: false })
-            : await c.call("telemetry.status");
-      out(s, () => `telemetry ${s.enabled ? "on" : "off"}; endpoint ${s.endpoint || "(none: kept local)"}; queued ${s.queued}, sent ${s.sent}; crash reports ${s.crashReports}; settings ${s.file}`);
       return 0;
     }
     case "merge": {

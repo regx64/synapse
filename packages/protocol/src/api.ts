@@ -389,28 +389,6 @@ export interface Decision {
 }
 
 // ---------------------------------------------------------------------------
-// Opt-in telemetry and crash reports (phase 4)
-
-export interface TelemetryEvent {
-  name: string;
-  at: string;
-  /** Counts and enums only. Never code, paths, prompts or messages. */
-  props: Record<string, string | number | boolean>;
-}
-
-export interface TelemetryStatus {
-  enabled: boolean;
-  /** Where events go. Empty: collected locally only. */
-  endpoint: string;
-  installId: string;
-  queued: number;
-  sent: number;
-  crashReports: number;
-  /** File holding the preference, shared by every repository. */
-  file: string;
-}
-
-// ---------------------------------------------------------------------------
 // State and events
 
 export interface CoreState {
@@ -492,6 +470,13 @@ export interface PresetInfo {
   args: string[];
   color: string;
   notes: string;
+  /**
+   * Credentials the agent must get from its environment (the agent's own env
+   * or the core's): at least one of these variables must be set before it
+   * starts. Used where the vendor's terms require API-key authentication for
+   * third-party tools.
+   */
+  requiresEnv?: { anyOf: string[]; reason: string };
 }
 
 export interface CoreMethods {
@@ -572,11 +557,6 @@ export interface CoreMethods {
     result: Decision;
   };
   "decisions.resolve": { params: { id: string; status: "accepted" | "rejected" | "superseded" }; result: Decision };
-
-  "telemetry.status": { params: void; result: TelemetryStatus };
-  "telemetry.setEnabled": { params: { enabled: boolean; endpoint?: string }; result: TelemetryStatus };
-  /** Exactly what would be sent. */
-  "telemetry.preview": { params: void; result: TelemetryEvent[] };
 
   "core.shutdown": { params: void; result: null };
 }

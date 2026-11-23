@@ -186,26 +186,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     const t = await conn.call("tasks.create", { title, agentId: agent });
     void vscode.window.showInformationMessage(`Synapse: created ${t.id}. Add details and dependencies on the board's Tasks tab.`);
   });
-  register("synapse.telemetry", async () => {
-    const s = await conn.call("telemetry.status");
-    const pick = await vscode.window.showQuickPick(
-      [
-        s.enabled
-          ? { label: "$(circle-slash) Turn telemetry off", action: "off" }
-          : { label: "$(check) Turn telemetry on", description: "anonymous counts only: no code, paths, prompts or messages", action: "on" },
-        { label: "$(eye) Show exactly what would be sent", action: "preview" },
-      ],
-      { placeHolder: `Telemetry is ${s.enabled ? "on" : "off"}${s.endpoint ? ` (sends to ${s.endpoint})` : " (no endpoint: kept on this machine)"}. ${s.crashReports} crash report(s) stored locally.` },
-    );
-    if (!pick) return;
-    if (pick.action === "preview") {
-      const doc = await vscode.workspace.openTextDocument({ language: "json", content: JSON.stringify(await conn.call("telemetry.preview"), null, 2) });
-      await vscode.window.showTextDocument(doc);
-      return;
-    }
-    const next = await conn.call("telemetry.setEnabled", { enabled: pick.action === "on" });
-    void vscode.window.showInformationMessage(`Synapse: telemetry ${next.enabled ? "on" : "off"}.`);
-  });
   register("synapse.initConfig", async () => {
     const uri = vscode.Uri.joinPath(vscode.Uri.file(repoRoot), "synapse.config.json");
     try {
