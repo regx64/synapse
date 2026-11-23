@@ -9,7 +9,7 @@ The built-in extension of the Synapse IDE: the first UI for synapse-core.
   color, with its name at the end of the line.
 - **Problems panel**: conflicts between agents, as diagnostics.
 - **Status bar**: agents, working count, pending approvals, conflicts.
-- **Combined review**: merged diff (opens VS Code's diff editor per file),
+- **Combined review**: merged diff (opens the editor's diff view per file),
   test results on the combined code, and a merge button.
 
 The extension holds no collaboration logic. It starts synapse-core for the

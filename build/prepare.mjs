@@ -4,6 +4,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { ROOT, VSCODE, capture, fail, readJson, run, writeJson } from "./lib.mjs";
+import { rebrandText } from "./rebrand.mjs";
 
 if (!fs.existsSync(path.join(VSCODE, "product.json"))) fail("vscode/ is missing: run node build/get-vscode.mjs first");
 
@@ -15,6 +16,8 @@ for (const key of overrides.$remove ?? []) delete product[key];
 for (const [key, value] of Object.entries(overrides)) {
   if (!key.startsWith("$")) product[key] = value;
 }
+// Labels upstream shows in the UI (the default keymap is called "VS Code").
+for (const k of product.onboardingKeymaps ?? []) k.label = rebrandText(k.label, product.nameShort);
 product.synapseVersion = readJson(path.join(ROOT, "package.json")).version;
 writeJson(productPath, product);
 console.log(`product.json: ${product.nameLong} ${product.synapseVersion} on Code - OSS ${readJson(path.join(VSCODE, "package.json")).version}`);
