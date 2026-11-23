@@ -1,4 +1,4 @@
-import { spawn, type ChildProcess } from "node:child_process";
+import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { ErrorCodes, JsonRpcPeer, RpcError } from "@synapse/protocol";
 
@@ -102,6 +102,9 @@ export class AcpAgentProcess extends EventEmitter {
       env: { ...process.env, ...this.opts.env },
       stdio: ["pipe", "pipe", "pipe"],
       shell: process.platform === "win32",
+      // Own process group, so stopping the agent also stops what its launcher
+      // started (npx runs the real adapter binary as a child).
+      detached: process.platform !== "win32",
       windowsHide: true,
     });
     this.child = child;
@@ -174,15 +177,29 @@ export class AcpAgentProcess extends EventEmitter {
     const child = this.child;
     if (!child || !this.running) return;
     await new Promise<void>((resolve) => {
-      const timer = setTimeout(() => {
-        child.kill("SIGKILL");
-      }, 3000);
+      const timer = setTimeout(() => killTree(child, "SIGKILL"), 3000);
       child.once("exit", () => {
         clearTimeout(timer);
+        // Children of the launcher may outlive it; end the whole group.
+        killTree(child, "SIGKILL");
         resolve();
       });
       child.stdin?.end();
-      child.kill("SIGTERM");
+      killTree(child, "SIGTERM");
     });
+  }
+}
+
+/** Signals a process and everything in its process group (Unix) or tree (Windows). */
+export function killTree(child: ChildProcess, signal: NodeJS.Signals): void {
+  if (!child.pid) return;
+  try {
+    if (process.platform === "win32") {
+      spawnSync("taskkill", ["/pid", String(child.pid), "/T", "/F"], { windowsHide: true });
+    } else {
+      process.kill(-child.pid, signal);
+    }
+  } catch {
+    // Already gone.
   }
 }

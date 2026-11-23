@@ -55,7 +55,7 @@ export class OwnershipService {
     } catch {
       return;
     }
-    const snapshot = await snapshotWorktree(wt.path, `Synapse snapshot of ${agentId}`);
+    const snapshot = await snapshotWorktree(wt.path, `Work of ${agent.name} (snapshot by Synapse)`);
     // Keep the snapshot reachable so git gc does not collect it.
     await git(this.repoRoot, ["update-ref", `refs/synapse/snapshots/${agentId}`, snapshot]);
 

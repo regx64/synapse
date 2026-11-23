@@ -12,7 +12,8 @@
   "exports": {
     ".": "./dist/src/index.js",
     "./main": "./dist/src/main.js",
-    "./testing": "./dist/src/testing.js"
+    "./testing": "./dist/src/testing.js",
+    "./acp": "./dist/src/acp.js"
   },
   "files": [
     "dist/src"
