@@ -20,7 +20,8 @@
     "clean": "tsc -b --clean packages/protocol packages/core packages/client packages/mock-agent packages/cli && rm -rf extensions/synapse-collab/dist",
     "test": "node --test --test-concurrency=1 \"packages/*/dist/test/**/*.test.js\" \"build/test/*.test.mjs\"",
     "check": "node build/check-patches.mjs && node build/check-branding.mjs",
-    "demo": "node scripts/demo.mjs"
+    "demo": "node scripts/demo.mjs",
+    "bench": "node scripts/bench.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

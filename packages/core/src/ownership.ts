@@ -1,7 +1,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { AgentOwnership, FileChange, FileMarker, OwnedSymbol } from "@synapse/protocol";
-import { diffNumstat, diffRaw, git, readBlob, snapshotWorktree } from "./git.js";
+import { diffNumstat, diffRaw, git, readBlobs, snapshotWorktree } from "./git.js";
 import type { StateStore } from "./store.js";
 import { parseSource, type ParsedFile } from "./symbols.js";
 import { KeyedSerializer, isInside, nowIso, realpathLoose, toPosix } from "./util.js";
@@ -10,6 +10,9 @@ const MAX_PARSE_BYTES = 1024 * 1024;
 
 export interface FileDetail {
   path: string;
+  /** Blob ids of the base and worktree versions (absent when added or deleted). */
+  oldOid?: string;
+  newOid?: string;
   status: FileChange["status"];
   oldText: string | null;
   newText: string | null;
@@ -39,6 +42,21 @@ export class OwnershipService {
 
   forget(agentId: string): void {
     this.details.delete(agentId);
+    this.baseOf.delete(agentId);
+  }
+
+  /** Base commit the details were computed against (the agent's worktree can be reset onto a new base). */
+  private readonly baseOf = new Map<string, string>();
+  private readonly indexFiles = new Map<string, string>();
+
+  /** A private, persistent index per worktree for snapshots, inside its git directory. */
+  private async indexFileFor(worktree: string): Promise<string> {
+    let f = this.indexFiles.get(worktree);
+    if (!f) {
+      f = path.join(await git(worktree, ["rev-parse", "--absolute-git-dir"]), "synapse-snapshot-index");
+      this.indexFiles.set(worktree, f);
+    }
+    return f;
   }
 
   async refresh(agentId: string): Promise<AgentOwnership | undefined> {
@@ -55,26 +73,50 @@ export class OwnershipService {
     } catch {
       return;
     }
-    const snapshot = await snapshotWorktree(wt.path, `Work of ${agent.name} (snapshot by Synapse)`);
+    const snapshot = await snapshotWorktree(wt.path, `Work of ${agent.name} (snapshot by Synapse)`, await this.indexFileFor(wt.path));
+    // Snapshots are deterministic: the same commit means nothing changed since the last refresh.
+    const previous = this.store.getOwnership(agentId);
+    if (previous?.snapshot === snapshot && this.details.has(agentId) && this.baseOf.get(agentId) === wt.baseCommit) return;
     // Keep the snapshot reachable so git gc does not collect it.
     await git(this.repoRoot, ["update-ref", `refs/synapse/snapshots/${agentId}`, snapshot]);
 
     const [entries, numstat] = await Promise.all([diffRaw(wt.path, wt.baseCommit, snapshot), diffNumstat(wt.path, wt.baseCommit, snapshot)]);
     const files: FileChange[] = [];
     const details = new Map<string, FileDetail>();
+    // Files whose before and after blobs are the same as last time keep their analysis.
+    const prevDetails = this.baseOf.get(agentId) === wt.baseCommit ? this.details.get(agentId) : undefined;
+    const prevFiles = new Map((previous?.files ?? []).map((f) => [f.path, f]));
+    const reusable = (e: (typeof entries)[number]) => {
+      const d = prevDetails?.get(e.path);
+      return d && d.oldOid === e.oldOid && d.newOid === e.newOid && prevFiles.has(e.path) ? d : undefined;
+    };
+    // All other contents in one git call (cached by blob id across refreshes).
+    const blobs = await readBlobs(wt.path, entries.filter((e) => !reusable(e)).flatMap((e) => [e.oldOid, e.newOid]).filter((o): o is string => !!o));
+    const text = (oid?: string) => {
+      const t = oid ? blobs.get(oid) : undefined;
+      return t === undefined || t.length > MAX_PARSE_BYTES || t.includes("\u0000") ? null : t;
+    };
 
     for (const entry of entries) {
-      const oldText = entry.oldOid ? await readBlobSafe(wt.path, entry.oldOid) : null;
-      const newText = entry.newOid ? await readBlobSafe(wt.path, entry.newOid) : null;
+      const stat = numstat.get(entry.path) ?? { added: 0, removed: 0 };
+      const same = reusable(entry);
+      if (same) {
+        files.push({ ...prevFiles.get(entry.path)!, status: entry.status, linesAdded: stat.added, linesRemoved: stat.removed });
+        details.set(entry.path, same);
+        continue;
+      }
+      const oldText = text(entry.oldOid);
+      const newText = text(entry.newOid);
       const oldParsed = oldText !== null ? await parseSafe(entry.path, oldText) : null;
       const newParsed = newText !== null ? await parseSafe(entry.path, newText) : null;
       const parsed = (oldText === null || oldParsed !== null) && (newText === null || newParsed !== null);
       const symbols = parsed ? diffSymbols(oldParsed, newParsed) : [];
-      const stat = numstat.get(entry.path) ?? { added: 0, removed: 0 };
       files.push({ path: entry.path, status: entry.status, parsed, symbols, linesAdded: stat.added, linesRemoved: stat.removed });
       details.set(entry.path, {
         path: entry.path,
         status: entry.status,
+        oldOid: entry.oldOid,
+        newOid: entry.newOid,
         oldText,
         newText,
         oldParsed,
@@ -84,6 +126,7 @@ export class OwnershipService {
     }
 
     this.details.set(agentId, details);
+    this.baseOf.set(agentId, wt.baseCommit);
     // The agent may have been removed while we were computing.
     if (!this.store.getAgent(agentId)) return;
     this.store.setOwnership({ agentId, files, snapshot, updatedAt: nowIso() });
@@ -172,12 +215,6 @@ export function diffSymbols(oldFile: ParsedFile | null, newFile: ParsedFile | nu
 }
 
 export const isCallable = (kind: string) => kind === "function" || kind === "method" || kind === "class";
-
-async function readBlobSafe(cwd: string, oid: string): Promise<string | null> {
-  const text = await readBlob(cwd, oid);
-  if (text.length > MAX_PARSE_BYTES || text.includes("\u0000")) return null;
-  return text;
-}
 
 async function parseSafe(filePath: string, text: string): Promise<ParsedFile | null> {
   if (text.length > MAX_PARSE_BYTES) return null;

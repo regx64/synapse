@@ -36,6 +36,11 @@ export const SYNAPSE_IDENTITY: Record<string, string> = {
 };
 
 export function runGit(cwd: string, args: string[], opts: GitOptions = {}): Promise<GitResult> {
+  return runGitRaw(cwd, args, opts).then((r) => ({ stdout: r.stdout.toString("utf8"), stderr: r.stderr, code: r.code }));
+}
+
+/** Like runGit, with stdout as bytes (for output that mixes byte counts and content). */
+function runGitRaw(cwd: string, args: string[], opts: GitOptions = {}): Promise<{ stdout: Buffer; stderr: string; code: number | null }> {
   return new Promise((resolve, reject) => {
     const child = spawn("git", args, {
       cwd,
@@ -49,7 +54,7 @@ export function runGit(cwd: string, args: string[], opts: GitOptions = {}): Prom
     child.stderr.on("data", (d: Buffer) => err.push(d));
     child.on("error", reject);
     child.on("close", (code) => {
-      resolve({ stdout: Buffer.concat(out).toString("utf8"), stderr: Buffer.concat(err).toString("utf8"), code });
+      resolve({ stdout: Buffer.concat(out), stderr: Buffer.concat(err).toString("utf8"), code });
     });
     if (opts.input !== undefined) child.stdin.end(opts.input);
     else child.stdin.end();
@@ -90,32 +95,102 @@ export async function showFile(cwd: string, rev: string, filePath: string): Prom
 }
 
 export async function readBlob(cwd: string, oid: string): Promise<string> {
-  const r = await runGit(cwd, ["cat-file", "blob", oid]);
-  if (r.code !== 0) throw new GitError(`git cat-file blob ${oid} failed: ${r.stderr.trim()}`, ["cat-file"], r.code, r.stderr);
-  return r.stdout;
+  const text = (await readBlobs(cwd, [oid])).get(oid);
+  if (text === undefined) throw new GitError(`git cat-file: blob ${oid} not found`, ["cat-file"], 1, "");
+  return text;
+}
+
+// Blobs are content-addressed and never change, so their text can be cached by id.
+const BLOB_CACHE_BYTES = 64 * 1024 * 1024;
+const blobCache = new Map<string, string>();
+let blobCacheBytes = 0;
+
+function cacheBlob(oid: string, text: string): void {
+  if (text.length > BLOB_CACHE_BYTES / 16) return;
+  blobCache.set(oid, text);
+  blobCacheBytes += text.length;
+  for (const [k, v] of blobCache) {
+    if (blobCacheBytes <= BLOB_CACHE_BYTES) break;
+    blobCache.delete(k);
+    blobCacheBytes -= v.length;
+  }
+}
+
+/**
+ * Reads many blobs with one `git cat-file --batch`. Missing blobs are left out
+ * of the result. Cached by blob id.
+ */
+export async function readBlobs(cwd: string, oids: string[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  const missing: string[] = [];
+  for (const oid of new Set(oids)) {
+    const hit = blobCache.get(oid);
+    if (hit === undefined) missing.push(oid);
+    else {
+      blobCache.delete(oid); // keep recently used blobs last
+      blobCache.set(oid, hit);
+      out.set(oid, hit);
+    }
+  }
+  if (!missing.length) return out;
+  const r = await runGitRaw(cwd, ["cat-file", "--batch"], { input: missing.join("\n") + "\n" });
+  if (r.code !== 0) throw new GitError(`git cat-file --batch failed: ${r.stderr.trim()}`, ["cat-file", "--batch"], r.code, r.stderr);
+  // Each answer: "<oid> <type> <size>\n<size bytes>\n", or "<oid> missing\n".
+  let at = 0;
+  const buf = r.stdout;
+  while (at < buf.length) {
+    const nl = buf.indexOf(10, at);
+    if (nl < 0) break;
+    const [oid, type, size] = buf.subarray(at, nl).toString("utf8").split(" ");
+    at = nl + 1;
+    if (type === "missing" || size === undefined) continue;
+    const n = Number(size);
+    const text = buf.subarray(at, at + n).toString("utf8");
+    at += n + 1;
+    if (type === "blob" && oid) {
+      out.set(oid, text);
+      cacheBlob(oid, text);
+    }
+  }
+  return out;
 }
 
 /**
  * Writes a commit that captures the worktree at `cwd`, including uncommitted
  * and untracked (but not ignored) files, without touching the worktree, its
  * index, or any branch. Returns HEAD itself when nothing changed.
+ *
+ * With `indexFile`, that private index is kept between calls (it is rebuilt
+ * only when HEAD moves), so git re-hashes only files whose stat data changed
+ * instead of every file in the worktree. Calls for one index must not overlap.
  */
-export async function snapshotWorktree(cwd: string, message: string): Promise<string> {
-  const head = await revParse(cwd, "HEAD");
-  const indexFile = path.join(os.tmpdir(), `synapse-index-${process.pid}-${randomBytes(4).toString("hex")}`);
-  const env = { GIT_INDEX_FILE: indexFile, ...SYNAPSE_IDENTITY };
+export async function snapshotWorktree(cwd: string, message: string, indexFile?: string): Promise<string> {
+  // HEAD, its tree and its commit time in one call.
+  const [head, headTree, time] = (await git(cwd, ["log", "-1", "--format=%H%n%T%n%ct", "HEAD"])).split("\n");
+  if (!head || !headTree || !time) throw new GitError("git log -1 HEAD gave no commit", ["log"], 1, "");
+  const temporary = !indexFile;
+  const index = indexFile ?? path.join(os.tmpdir(), `synapse-index-${process.pid}-${randomBytes(4).toString("hex")}`);
+  const env = { GIT_INDEX_FILE: index, ...SYNAPSE_IDENTITY };
+  const headMark = `${index}.head`;
   try {
-    await git(cwd, ["read-tree", head], { env });
+    const builtFrom = temporary ? undefined : await fs.readFile(headMark, "utf8").catch(() => undefined);
+    if (builtFrom !== head) {
+      await git(cwd, ["read-tree", head], { env });
+      if (!temporary) await fs.writeFile(headMark, head);
+    }
     await git(cwd, ["add", "-A", "--", "."], { env });
     const tree = await git(cwd, ["write-tree"], { env });
-    const headTree = await git(cwd, ["rev-parse", `${head}^{tree}`]);
     if (tree === headTree) return head;
     // Deterministic: the same tree on the same parent always gives the same commit,
     // so "did this agent change anything since?" is a plain comparison.
-    const date = `${await git(cwd, ["log", "-1", "--format=%ct", head])} +0000`;
+    const date = `${time} +0000`;
     return await git(cwd, ["commit-tree", tree, "-p", head, "-m", message], { env: { ...env, GIT_AUTHOR_DATE: date, GIT_COMMITTER_DATE: date } });
+  } catch (err) {
+    // A broken private index must not wedge future snapshots.
+    if (!temporary) await fs.rm(headMark, { force: true });
+    throw err;
   } finally {
-    await fs.rm(indexFile, { force: true });
+    if (temporary) await fs.rm(index, { force: true });
   }
 }
 

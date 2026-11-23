@@ -87,8 +87,16 @@ Done criteria (50 beta users, retention measurement) are outside what code can d
 - **Instruction screening is heuristic.** It catches common injection
   phrasing, not every attack; agent text is always labeled as data as the
   main defense.
-- Ownership uses a fixed debounce (750 ms) and file watching; very large
-  worktrees may need tuning (risk T5).
+- **Ownership speed (risk T5).** Ownership uses file watching and a 750 ms
+  debounce. `npm run bench` measures it; on a 2,000-file TypeScript repository
+  with 4 agents each editing 200 files, one agent's refresh after a one-file
+  edit takes about 50 ms, a refresh with no new changes about 15 ms per agent,
+  and a full conflict check about 50 ms (2026-11-23, Linux container). Before
+  the caching below: 1.8 s and 1.2 s. Snapshots keep a private git index per
+  worktree, so git re-hashes only changed files; unchanged snapshots skip the
+  refresh; file contents are read in one batched `git cat-file` and cached by
+  blob id; files whose before and after blobs did not change keep their
+  analysis; merge predictions are cached per pair of snapshots.
 
 ## First two weeks checklist
 
