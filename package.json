@@ -18,7 +18,7 @@
   "scripts": {
     "build": "tsc -b packages/protocol packages/core packages/client packages/mock-agent packages/cli && npm run build -w extensions/synapse-collab",
     "clean": "tsc -b --clean packages/protocol packages/core packages/client packages/mock-agent packages/cli && rm -rf extensions/synapse-collab/dist",
-    "test": "node --test --test-concurrency=1 \"packages/*/dist/test/**/*.test.js\"",
+    "test": "node --test --test-concurrency=1 \"packages/*/dist/test/**/*.test.js\" \"build/test/*.test.mjs\"",
     "check": "node build/check-patches.mjs && node build/check-branding.mjs",
     "demo": "node scripts/demo.mjs"
   },

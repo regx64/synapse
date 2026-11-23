@@ -3,7 +3,7 @@
 // adds the built-in extension (with its bundled synapse-core).
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { ROOT, VSCODE, fail, readJson, writeJson } from "./lib.mjs";
+import { ROOT, VSCODE, capture, fail, readJson, run, writeJson } from "./lib.mjs";
 
 if (!fs.existsSync(path.join(VSCODE, "product.json"))) fail("vscode/ is missing: run node build/get-vscode.mjs first");
 
@@ -45,4 +45,12 @@ for (const f of ["LICENSE.txt", "ThirdPartyNotices.txt"]) {
   if (!fs.existsSync(path.join(VSCODE, f))) fail(`upstream ${f} is missing; refusing to build without license notices`);
 }
 fs.copyFileSync(path.join(ROOT, "LICENSE"), path.join(VSCODE, "SYNAPSE-LICENSE.txt"));
-console.log("prepared vscode/ for a Synapse build");
+// 4. Commit inside vscode/. Code - OSS bakes `git rev-parse HEAD` into the
+//    build as its commit, which the auto-updater compares; this gives every
+//    Synapse build (version + patches + product.json) its own commit.
+const env = { ...process.env, GIT_AUTHOR_NAME: "Synapse", GIT_AUTHOR_EMAIL: "synapse@localhost", GIT_COMMITTER_NAME: "Synapse", GIT_COMMITTER_EMAIL: "synapse@localhost" };
+run("git", ["add", "-A"], { cwd: VSCODE, env });
+if (capture("git", ["diff", "--cached", "--quiet"], { cwd: VSCODE }).code !== 0) {
+  run("git", ["commit", "-q", "--no-verify", "-m", `Synapse ${product.synapseVersion}`], { cwd: VSCODE, env });
+}
+console.log(`prepared vscode/ for a Synapse build (commit ${capture("git", ["rev-parse", "HEAD"], { cwd: VSCODE }).stdout.slice(0, 10)})`);

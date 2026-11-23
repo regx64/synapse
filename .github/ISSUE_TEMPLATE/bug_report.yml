@@ -1,0 +1,34 @@
+name: Bug report
+description: Something in Synapse does not work as expected
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: The smaller the better. A failing scenario with the mock agent is ideal.
+  - type: input
+    id: version
+    attributes:
+      label: Synapse version and OS
+      placeholder: "0.1.0, macOS 15 arm64"
+    validations:
+      required: true
+  - type: dropdown
+    id: agents
+    attributes:
+      label: Agents involved
+      multiple: true
+      options: [Claude, Codex, Gemini, Mock agent, Other ACP agent, None]
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: ".synapse/core.log, and the agent's output channel. Synapse masks known secret formats, but check before pasting."
+      render: text

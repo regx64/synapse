@@ -18,6 +18,8 @@ Two UIs, one core, three external parts.
             │  OwnershipService ─ snapshots + tree-sitter symbol diffs     │
             │  Conflict detection ─ same symbol, signature change, text    │
             │  ReviewService ─ integration worktree, tests, merge          │
+            │  CollabService ─ task graph, messages, decision log          │
+            │  Policy ─ per-agent permissions, audit; Telemetry (opt-in)   │
             └───────┬─────────────────────────┬──────────────────────┬─────┘
                     │ ACP over stdio           │ git                  │ (IDE only)
                     ▼                          ▼                      ▼
@@ -25,6 +27,11 @@ Two UIs, one core, three external parts.
              Gemini, any ACP agent       worktrees, refs,       extension gallery
              (user's own keys)           merge-tree
 ```
+
+Each agent also starts a **Synapse MCP server** (given to it in ACP
+`session/new`). It connects back to the core with a per-agent token and can
+use only the restricted agent API: read tasks and its inbox, send messages,
+read accepted decisions, propose decisions, report a task finished.
 
 ## Rules
 
@@ -39,7 +46,10 @@ Two UIs, one core, three external parts.
    by agents; only an approved `review.merge` changes it.
 4. **Agent output is data, not instructions** (C2). Approval details and
    messages are displayed, never executed or fed to another agent as commands.
-5. **No secrets on disk** (C4). Agent environment variables stay in memory and
+5. **Policies decide first, the person decides the rest** (C1). Every
+   permission request is evaluated against the agent's policy (allow, deny, or
+   ask the person), and every decision is audited.
+6. **No secrets on disk** (C4). Agent environment variables stay in memory and
    are not written to `.synapse/state.json` or returned by the API.
 
 ## How ownership works
@@ -71,6 +81,30 @@ After ownership changes, across all agents:
 Conflict ids are stable while a conflict persists, so UIs can track them.
 Name-based call matching can produce false positives across unrelated
 functions with the same name; import resolution is future work.
+
+## Task graph and handoffs
+
+Tasks have dependencies (cycles are rejected), an assignee, a scope and an
+auto-start flag. `tasks.start` composes the prompt: the task, its scope, then
+a `<synapse-context>` block holding accepted decisions and pending messages,
+labeled as data. When the agent's turn ends the task goes to review; the
+person's "done" creates handoff messages to the agents of dependent tasks
+(files and symbols from ownership, not from agent text) and auto-starts what
+can start.
+
+Messages from agents are screened before delivery: text that reads like
+instructions, dangerous commands or secret-looking strings hold the message
+for the person; tags that would open or close the context block are removed.
+
+## Permission model
+
+`policy.ts` is a pure function of a policy and a request. File access over
+ACP is checked against `protected` and `writable` globs; permission requests
+are evaluated by tool kind (edits, reads, commands, fetches). A command is
+auto-allowed only if every part of it (split on `&&`, `||`, `;`, `|`) matches
+an allow pattern; any denied part refuses it; substitutions always ask.
+Commands an agent reports running without having asked are audited as
+`ran-unasked`, and risky ones raise a warning event.
 
 ## Combined review
 

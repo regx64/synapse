@@ -1,5 +1,5 @@
 {
-  "$comment": "Synapse overrides for Code - OSS product.json, merged by build/prepare.mjs. Every name, id and URL that a rename (risk L3) would touch lives in this file. Never use the Visual Studio Code name or logo (risk L4).",
+  "$comment": "Synapse overrides for Code - OSS product.json, merged by build/prepare.mjs. Every name, id and URL that a rename (risk L3) would touch lives in this file. Never use the Visual Studio Code name or logo (risk L4). Set \"updateUrl\" to the deployed build/update-server.mjs once one exists (see docs/release.md); without it, auto-update is off.",
   "nameShort": "Synapse",
   "nameLong": "Synapse",
   "applicationName": "synapse",
@@ -44,5 +44,6 @@
   "$remove": [
     "voiceWsUrl",
     "webviewContentExternalBaseUrlTemplate"
-  ]
+  ],
+  "quality": "stable"
 }

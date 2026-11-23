@@ -9,15 +9,16 @@ const i = process.argv.indexOf("--tag");
 const tag = i > 0 ? process.argv[i + 1] : pin.tag;
 
 if (fs.existsSync(VSCODE)) {
-  const head = capture("git", ["rev-parse", "HEAD"], { cwd: VSCODE }).stdout;
-  const want = capture("git", ["ls-remote", pin.repo, `refs/tags/${tag}`]).stdout.split(/\s+/)[0];
-  if (head && head === want) {
-    console.log(`vscode/ already at ${tag} (${head.slice(0, 10)}); resetting it to a clean tree`);
-    run("git", ["reset", "--hard", "-q"], { cwd: VSCODE });
+  // Reuse the checkout when it has the tag: go back to it, dropping patches and the prepare commit.
+  const want = tag === pin.tag ? pin.commit : capture("git", ["ls-remote", pin.repo, `refs/tags/${tag}`]).stdout.split(/\s+/)[0];
+  const have = capture("git", ["rev-parse", "--verify", "--quiet", `refs/tags/${tag}^{commit}`], { cwd: VSCODE }).stdout;
+  if (want && have === want) {
+    console.log(`vscode/ has ${tag} (${have.slice(0, 10)}); resetting to it`);
+    run("git", ["checkout", "-q", "--force", "--detach", have], { cwd: VSCODE });
     run("git", ["clean", "-fdq"], { cwd: VSCODE });
     process.exit(0);
   }
-  console.log(`vscode/ is at ${head.slice(0, 10)}, replacing it with ${tag}`);
+  console.log(`vscode/ does not have ${tag}; fetching it fresh`);
   fs.rmSync(VSCODE, { recursive: true, force: true });
 }
 

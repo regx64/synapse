@@ -36,11 +36,24 @@ replaces only the UI. See [the plan](docs/plan.md).
 - **Combined review.** Merge all agents' work in an integration worktree, run
   your tests on the combined result, see one diff, then merge in one step.
   Merging is refused while tests fail or conflicts remain, unless you force it.
+- **Task graph.** Split a goal into tasks, assign them, set dependencies.
+  Finishing a task hands off to the next agent with the files and symbols it
+  changed; dependent tasks can start automatically.
+- **Structured messages and a decision log.** Agents message each other and
+  propose decisions through a Synapse MCP server; their text is delivered as
+  data, and anything that reads like instructions is held for you. Accepted
+  decisions go into every task prompt.
+- **Permission policies.** Per-agent rules for files, commands and network;
+  everything else comes to you; everything is audited.
+- **Opt-in telemetry** (off by default, counts only, previewable) and
+  redacted local crash reports.
 - **UIs:** a built-in VS Code extension (board, editor markers in each agent's
   color, conflicts in the Problems panel, status bar, review panel) and a
   `synapse` CLI. Both are clients of the same core API.
 
-What is not built yet is listed in [docs/status.md](docs/status.md).
+What is not built yet is listed in [docs/status.md](docs/status.md). New
+here? Start with [getting started](docs/getting-started.md), then the
+[user guide](docs/user-guide.md).
 
 ## Try it
 
@@ -137,7 +150,8 @@ in `.synapse/config.json`:
 | `packages/mock-agent` | A scripted ACP agent for tests and demos (no model calls) |
 | `extensions/synapse-collab` | The built-in extension: the first UI |
 | `build/`, `patches/`, `product.json` | The fork: VSCodium-style build scripts, the core patch set (budget 20), branding |
-| `docs/` | Plan, architecture, API, fork maintenance, status |
+| `examples/` | Small repositories (JavaScript, Python) with two-agent scenarios |
+| `docs/` | Plan, getting started, user guide, architecture, API, fork maintenance, privacy, release, status |
 
 ## License
 

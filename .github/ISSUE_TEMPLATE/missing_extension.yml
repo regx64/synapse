@@ -1,0 +1,19 @@
+name: Missing extension
+description: An extension you need is not on Open VSX, or does not work in Synapse
+labels: [extensions]
+body:
+  - type: input
+    id: id
+    attributes:
+      label: Extension id
+      placeholder: publisher.name
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: What do you use it for?
+  - type: markdown
+    attributes:
+      value: |
+        Extensions published by Microsoft or GitHub on the Visual Studio Marketplace cannot be used in Synapse under the Marketplace terms. See docs/fork-maintenance.md for open alternatives, and consider asking the publisher to list the extension on Open VSX.

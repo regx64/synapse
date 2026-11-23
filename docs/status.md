@@ -1,6 +1,6 @@
 # Status against the plan
 
-As of 2026-11-23. "Done" means implemented and covered by tests or a run
+As of 2026-11-23 (phases 3 and 4 added the same day). "Done" means implemented and covered by tests or a run
 recorded here; "not verified" means written but not yet run end to end.
 
 ## Phase 1: Fork foundation
@@ -9,7 +9,7 @@ recorded here; "not verified" means written but not yet run end to end.
 | --- | --- |
 | Build repo: pinned upstream tag, patch-apply script, `product.json`, telemetry off, Open VSX | Done. Steps fetch → patch → prepare → branding check ran against Code - OSS 1.147.0 |
 | Development builds for Linux, macOS, Windows in CI | Written (`dev-build.yml`); **not verified**: the full upstream compile has not run yet |
-| Built-in extension skeleton: board panel, commands, status bar | Done (beyond skeleton: markers, diagnostics, review panel). Smoke-tested in VS Code 1.147.0 (`npm run test:smoke -w extensions/synapse-collab`): activates, starts the core with the editor's runtime, shows a two-agent conflict in the Problems panel, registers its commands. The webviews (board, review panel) have not been checked by eye |
+| Built-in extension skeleton: board panel, commands, status bar | Done (beyond skeleton: markers, diagnostics, review panel). Smoke-tested in VS Code 1.147.0 (`npm run test:smoke -w extensions/synapse-collab`): activates, starts the core with the editor's runtime, shows a two-agent conflict in the Problems panel, registers its commands, and applies an agent policy edited as JSON. The board was rendered in Chromium from real core state and checked by eye (all five tabs); the review panel has not been. |
 | synapse-core skeleton: separate process, local JSON-RPC API, state store, event stream | Done |
 | Rehearse one upstream sync and measure it | Automated in `upstream-sync.yml`; no newer upstream release exists yet to rehearse against |
 
@@ -43,16 +43,28 @@ in at least 9 of 10 runs", is met deterministically with scripted agents
 `npm run demo`). It still has to be measured with real agents, whose edits
 vary from run to run, and with two weeks of internal use.
 
-## Phase 3 and 4
+## Phase 3: Collaboration features
 
-Not started, by design (the plan starts them after G2): task graph, structured
-handoffs between agents, shared decision log, the full permission model,
-signing and notarization, auto-update, docs site and onboarding, opt-in
-telemetry and crash reports.
+| Item | State |
+| --- | --- |
+| Task graph: split a goal into subtasks, assign, dependencies | Done: tasks with assignee, dependencies (cycles rejected), scope, auto-start; board tab and CLI |
+| Handoffs and messages in a structured format (C2) | Done: typed messages with files and symbols; automatic handoffs on "done" use ownership facts; delivered as labeled data; flagged messages held for the person |
+| Shared decision log | Done: propose / accept / supersede; accepted decisions in every task prompt; Markdown file |
+| Permission model with human approval | Done for everything that goes through Synapse: per-agent file, command and network rules, approvals, audit log, warnings for risky commands run unasked. Not an OS sandbox (see Known limits) |
+| Agent-side tools | Synapse MCP server per agent session, with a restricted per-agent-token API |
 
-Partial groundwork: approvals route every ACP permission request to the
-person; agents are confined to their worktree for file access through ACP
-(not for their own shell tools, which run as the user; sandboxing is phase 3).
+Tested with scripted agents (`packages/cli/test/phase3.test.ts`, `packages/core/test/policy.test.ts`). The plan's done criterion (fewer manual merges and fixes on the same tasks) needs real agents and a before/after comparison.
+
+## Phase 4: Public beta
+
+| Item | State |
+| --- | --- |
+| macOS signing and notarization, Windows signing, auto-update | Scaffolding: `release.yml` (signing steps run when secrets exist), update feed generator and a no-dependency update server implementing the Code - OSS update protocol (tested). Not run: needs certificates, a host and the full build |
+| Docs, onboarding, example repos | Done: getting started, user guide, privacy and data flow, release guide; in-editor walkthrough; `examples/shop-js`, `examples/inventory-py` (their tests pass) |
+| Opt-in telemetry and crash reports | Done: off by default; counts and enums only; preview of exactly what would be sent; redacted local crash reports. No telemetry server exists yet, so nothing is sent until an endpoint is configured |
+| GitHub issues, contribution guide, public roadmap | Done: issue and PR templates, CONTRIBUTING, ROADMAP, SECURITY, CODE_OF_CONDUCT |
+
+Done criteria (50 beta users, retention measurement) are outside what code can do.
 
 ## Known limits
 
@@ -67,6 +79,12 @@ person; agents are confined to their worktree for file access through ACP
 - **Product icons** are still upstream's Code - OSS defaults.
 - **The built-in Copilot** in Code - OSS 1.147 is an open decision; see
   [fork maintenance](fork-maintenance.md#open-question-the-built-in-copilot).
+- **Same-user processes.** An agent's shell can read `.synapse/core.json`
+  and talk to the core as the person. Only OS-level isolation (containers,
+  separate users) closes that.
+- **Instruction screening is heuristic.** It catches common injection
+  phrasing, not every attack; agent text is always labeled as data as the
+  main defense.
 - Ownership uses a fixed debounce (750 ms) and file watching; very large
   worktrees may need tuning (risk T5).
 

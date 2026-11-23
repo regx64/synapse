@@ -48,6 +48,24 @@ failing tests), `-32004` not found.
 | `review.fileContent` | `{ id, path, side: "base" \| "merged" }` | `{ content \| null }` |
 | `review.merge` | `{ id, resetAgents?, force? }` | `Review` |
 | `review.discard` | `{ id }` | `Review` |
+| `agents.setPolicy` | `{ id, policy: Partial<AgentPolicy> }` | `AgentState` |
+| `policy.evaluate` | `{ agentId, query: { toolKind?, command?, path?, url? } }` | `{ decision: "allow" \| "ask" \| "deny", rule }` |
+| `audit.list` | `{ agentId?, limit? }` | `AuditEntry[]` |
+| `tasks.list` | – | `Task[]` |
+| `tasks.create` | `{ title, description?, agentId?, dependsOn?, scope?, autoStart? }` | `Task` |
+| `tasks.update` | `{ id, title?, description?, agentId?, dependsOn?, scope?, autoStart? }` | `Task` |
+| `tasks.remove` | `{ id }` | `null` |
+| `tasks.start` | `{ id }` | `Task` (prompt sent with context) |
+| `tasks.setStatus` | `{ id, status }` | `Task` ("done" hands off and may auto-start dependents) |
+| `messages.list` | `{ agentId? }` | `AgentMessage[]` |
+| `messages.send` | `{ to, subject, body?, kind?, taskId?, files?, symbols? }` | `AgentMessage` (from the person) |
+| `messages.release` / `messages.reject` | `{ id }` | `AgentMessage` (held messages) |
+| `decisions.list` | – | `Decision[]` |
+| `decisions.add` | `{ title, decision, rationale?, tags?, supersedes?, status? }` | `Decision` (accepted by default) |
+| `decisions.resolve` | `{ id, status: "accepted" \| "rejected" \| "superseded" }` | `Decision` |
+| `telemetry.status` | – | `TelemetryStatus` |
+| `telemetry.setEnabled` | `{ enabled, endpoint? }` | `TelemetryStatus` |
+| `telemetry.preview` | – | `TelemetryEvent[]` (exactly what would be sent) |
 | `core.shutdown` | – | `null` (stops agents, then the process) |
 
 ## Events
@@ -63,8 +81,32 @@ Each `event` notification is `{ seq, ts, type, data }`.
 | `conflicts.updated` | `Conflict[]` (the full current list) |
 | `approval.requested` / `approval.resolved` | `Approval` |
 | `review.updated` | `Review` |
+| `task.updated` / `task.removed` | `Task` / `{ id }` |
+| `message.updated` | `AgentMessage` |
+| `decision.updated` | `Decision` |
+| `audit.added` | `AuditEntry` |
+| `core.log` | `{ level, message }` (e.g. a risky command an agent ran without asking) |
 
 The core keeps the last 2000 events for `sinceSeq` replay.
+
+## The agent API
+
+Agents' Synapse MCP servers connect with `agent.hello { agentToken }` instead
+of `session.hello`. Such a connection can call only these, always as that
+agent:
+
+| Method | Does |
+| --- | --- |
+| `agent.tasks` | the task graph |
+| `agent.inbox` | messages to this agent (marks pending ones delivered) |
+| `agent.send` | send a message (screened; may be held) |
+| `agent.decisions` | accepted decisions |
+| `agent.proposeDecision` | propose a decision (status "proposed") |
+| `agent.completeTask` | move its own in-progress task to review |
+
+MCP tools exposed to the agent: `synapse_tasks`, `synapse_inbox`,
+`synapse_send_message`, `synapse_decisions`, `synapse_propose_decision`,
+`synapse_complete_task`.
 
 ## Agent status
 

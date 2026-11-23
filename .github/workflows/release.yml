@@ -1,0 +1,149 @@
+name: Release
+
+# Phase 4: signed builds and the auto-update feed, on a version tag (v0.2.0).
+# Signing steps run only when their secrets exist, so forks and dry runs
+# still produce unsigned artifacts. Secrets:
+#   macOS:   MACOS_CERTIFICATE (base64 .p12), MACOS_CERTIFICATE_PASSWORD, MACOS_SIGNING_IDENTITY,
+#            APPLE_ID, APPLE_TEAM_ID, APPLE_APP_PASSWORD (for notarization)
+#   Windows: WINDOWS_CERTIFICATE (base64 .pfx), WINDOWS_CERTIFICATE_PASSWORD
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, platform: linux, arch: x64 }
+          - { os: macos-latest, platform: darwin, arch: arm64 }
+          - { os: macos-13, platform: darwin, arch: x64 }
+          - { os: windows-latest, platform: win32, arch: x64 }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 240
+    env:
+      VERSION: ${{ github.ref_type == 'tag' && github.ref_name || 'v0.0.0-dev' }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: pin
+        shell: bash
+        run: echo "node=$(node -p 'require("./build/upstream.json").node')" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ steps.pin.outputs.node }}
+      - if: matrix.platform == 'linux'
+        run: sudo apt-get update && sudo apt-get install -y libkrb5-dev libx11-dev libxkbfile-dev libsecret-1-dev rpm fakeroot dpkg
+      - run: npm ci && npm run build
+      - run: node build/build.mjs --platform ${{ matrix.platform }} --arch ${{ matrix.arch }}
+
+      # ---- macOS: sign, notarize, zip --------------------------------------
+      - name: Sign and notarize (macOS)
+        if: matrix.platform == 'darwin' && env.MACOS_CERTIFICATE != ''
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          MACOS_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
+          echo "$MACOS_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$GITHUB_RUN_ID" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$GITHUB_RUN_ID" "$KEYCHAIN"
+          security import "$RUNNER_TEMP/cert.p12" -P "$MACOS_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN"
+          security list-keychain -d user -s "$KEYCHAIN"
+          APP="VSCode-darwin-${{ matrix.arch }}/Synapse.app"
+          ENT=vscode/build/azure-pipelines/darwin/app-entitlements.plist
+          codesign --deep --force --timestamp --options runtime --entitlements "$ENT" --sign "$MACOS_SIGNING_IDENTITY" "$APP"
+          ditto -c -k --keepParent "$APP" notarize.zip
+          xcrun notarytool submit notarize.zip --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" --wait
+          xcrun stapler staple "$APP"
+      - name: Package (macOS)
+        if: matrix.platform == 'darwin'
+        run: |
+          mkdir -p release
+          ditto -c -k --keepParent "VSCode-darwin-${{ matrix.arch }}/Synapse.app" "release/Synapse-darwin-${{ matrix.arch }}-${VERSION#v}.zip"
+
+      # ---- Windows: installers, sign ---------------------------------------
+      - name: Installers (Windows)
+        if: matrix.platform == 'win32'
+        working-directory: vscode
+        run: |
+          pnpm run gulp vscode-win32-x64-inno-updater
+          pnpm run gulp vscode-win32-x64-user-setup
+          pnpm run gulp vscode-win32-x64-system-setup
+      - name: Sign and package (Windows)
+        if: matrix.platform == 'win32'
+        shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          $v = $env:VERSION.TrimStart('v')
+          New-Item -ItemType Directory -Force release | Out-Null
+          $user = Get-ChildItem vscode/.build/win32-x64 -Recurse -Filter *.exe | Where-Object { $_.DirectoryName -like '*user-setup*' } | Select-Object -First 1
+          $system = Get-ChildItem vscode/.build/win32-x64 -Recurse -Filter *.exe | Where-Object { $_.DirectoryName -like '*system-setup*' } | Select-Object -First 1
+          Copy-Item $user.FullName "release/SynapseUserSetup-x64-$v.exe"
+          Copy-Item $system.FullName "release/SynapseSetup-x64-$v.exe"
+          Compress-Archive -Path VSCode-win32-x64/* -DestinationPath "release/Synapse-win32-x64-$v.zip"
+          if ($env:WINDOWS_CERTIFICATE) {
+            [IO.File]::WriteAllBytes("$env:RUNNER_TEMP/cert.pfx", [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE))
+            $signtool = Get-ChildItem "C:/Program Files (x86)/Windows Kits/10/bin" -Recurse -Filter signtool.exe | Where-Object { $_.FullName -like '*x64*' } | Select-Object -Last 1
+            Get-ChildItem release -Filter *.exe | ForEach-Object {
+              & $signtool.FullName sign /f "$env:RUNNER_TEMP/cert.pfx" /p $env:WINDOWS_CERTIFICATE_PASSWORD /fd sha256 /tr http://timestamp.digicert.com /td sha256 $_.FullName
+            }
+          }
+
+      # ---- Linux: tarball, deb, rpm -----------------------------------------
+      - name: Package (Linux)
+        if: matrix.platform == 'linux'
+        run: |
+          mkdir -p release
+          tar -czf "release/synapse-linux-x64-${VERSION#v}.tar.gz" -C . VSCode-linux-x64
+          (cd vscode && pnpm run gulp vscode-linux-x64-prepare-deb && pnpm run gulp vscode-linux-x64-build-deb)
+          (cd vscode && pnpm run gulp vscode-linux-x64-prepare-rpm && pnpm run gulp vscode-linux-x64-build-rpm)
+          find vscode/.build/linux -name '*.deb' -exec cp {} release/ \;
+          find vscode/.build/linux -name '*.rpm' -exec cp {} release/ \;
+
+      - name: Record the build commit (the auto-updater compares it)
+        shell: bash
+        run: git -C vscode rev-parse HEAD > release/commit-${{ matrix.platform }}-${{ matrix.arch }}.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.platform }}-${{ matrix.arch }}
+          path: release/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref_type == 'tag'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: release
+          merge-multiple: true
+      - name: Checksums
+        run: |
+          COMMITS=$(cat release/commit-*.txt | sort -u)
+          [ "$(echo "$COMMITS" | wc -l)" = "1" ] || { echo "builds disagree on the commit: $COMMITS"; exit 1; }
+          echo "$COMMITS" > build-commit.txt && rm release/commit-*.txt
+          (cd release && sha256sum * > SHA256SUMS)
+      - name: Update feed
+        run: |
+          node build/update-feed.mjs --version "${GITHUB_REF_NAME#v}" \
+            --commit "$(cat build-commit.txt)" \
+            --assets release --out update-feed \
+            --base-url "${{ github.server_url }}/${{ github.repository }}/releases/download/${GITHUB_REF_NAME}"
+          tar -czf release/update-feed.tar.gz update-feed
+      - name: GitHub release (draft)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" release/* --draft --title "Synapse $GITHUB_REF_NAME" --notes "Draft release. Deploy update-feed.tar.gz to the update server before publishing."
