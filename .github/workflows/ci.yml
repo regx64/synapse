@@ -30,6 +30,11 @@ jobs:
       - run: npm test
       - run: npm run typecheck -w extensions/synapse-collab
       - run: npm run check
+      - name: Extension smoke test in VS Code
+        if: matrix.os == 'ubuntu-latest'
+        run: xvfb-run -a npm run test:smoke -w extensions/synapse-collab
+        env:
+          VSCODE_TEST_VERSION: "1.147.0"
       - uses: actions/upload-artifact@v4
         if: matrix.os == 'ubuntu-latest'
         with:

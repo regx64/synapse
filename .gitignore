@@ -7,3 +7,4 @@ dist/
 .synapse/
 *.log
 .DS_Store
+.vscode-test/

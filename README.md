@@ -58,6 +58,12 @@ npm run build
 npm test
 ```
 
+Extension smoke test in a real VS Code (Linux needs `xvfb-run -a` in front):
+
+```bash
+npm run test:smoke -w extensions/synapse-collab
+```
+
 A two-agent demo with scripted agents, no API keys needed:
 
 ```bash

@@ -170,13 +170,15 @@
   "scripts": {
     "build": "node esbuild.mjs",
     "typecheck": "tsc --noEmit -p .",
-    "package": "node esbuild.mjs && vsce package --no-dependencies"
+    "package": "node esbuild.mjs && vsce package --no-dependencies",
+    "test:smoke": "node test/smoke.mjs"
   },
   "devDependencies": {
     "@synapse/client": "0.1.0",
     "@synapse/core": "0.1.0",
     "@synapse/mock-agent": "0.1.0",
     "@types/vscode": "1.95.0",
-    "esbuild": "0.25.12"
+    "esbuild": "0.25.12",
+    "@vscode/test-electron": "2.5.2"
   }
 }
