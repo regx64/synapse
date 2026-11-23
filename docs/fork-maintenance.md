@@ -7,8 +7,11 @@ time, the way VSCodium does.
 ## Layout
 
 `microsoft/vscode` is never committed here. A build fetches the tag pinned in
-[`build/upstream.json`](../build/upstream.json) into `./vscode` (git-ignored)
-and turns it into Synapse:
+[`build/upstream.json`](../build/upstream.json) into `../synapse-vscode`, a
+folder next to this repository (or `SYNAPSE_VSCODE_DIR`), and turns it into
+Synapse. It must stay outside this repository: inside it, TypeScript would
+pick up this repository's `node_modules/@types` while compiling VS Code. The
+app is written next to that folder (`../VSCode-<platform>-<arch>`).
 
 | Step | Script | What |
 | --- | --- | --- |
@@ -35,7 +38,10 @@ needs a machine or CI runner with the upstream toolchain (see
    with an owner and a reason.
 
 **Budget: 20 core patches** (`build/check-patches.mjs`, part of `npm run check`).
-Current count: **0**. Branding is `product.json`; telemetry needs no patch
+Current count: **1**: `0001-publisher-from-product.patch` makes the Windows
+and macOS file version info and the Windows installer take the publisher,
+copyright and URL from `product.json` instead of Microsoft's. The rest of
+the branding is `product.json` and the icon overlay; telemetry needs no patch
 because Code - OSS sends telemetry only when `product.json` sets
 `enableTelemetry` (see `src/vs/platform/telemetry/common/telemetryUtils.ts`),
 and Synapse sets it to `false`.
@@ -82,6 +88,44 @@ with `overlay.json` mapping each file to the upstream file it replaces.
 not count against the patch budget) and sets the Windows Start tile name and
 color. If an upstream release renames or drops an icon, prepare fails and
 names it.
+
+## Licenses in what ships
+
+- **Upstream:** Code - OSS's `LICENSE.txt` and `ThirdPartyNotices.txt` ship
+  unchanged; `prepare.mjs` refuses to build without them.
+- **Synapse's extension:** `extensions/synapse-collab/esbuild.mjs` writes
+  `dist/ThirdPartyNotices.txt` from esbuild's input list (everything bundled
+  from `node_modules`), plus the tree-sitter runtime and the grammar licenses
+  kept in `extensions/synapse-collab/licenses/`. A bundled package without a
+  license file fails the build.
+- **Built app:** after the upstream build, `build/check-output-licenses.mjs`
+  walks every `node_modules` in the app. Packages under a custom license
+  (`"SEE LICENSE IN <file>"`, such as the GitHub Copilot CLI, whose license
+  allows redistribution only unmodified and with the license included) must
+  ship that file; a missing one is copied from the Code - OSS checkout, or the
+  build fails. It also checks both notice files are in the app. This is not
+  hypothetical: the 1.147.0 Windows build left out `LICENSE.md` of
+  `@github/copilot@1.0.73` (`extensions/copilot/node_modules`), and the check
+  put it back.
+
+## Remaining upstream branding
+
+[`branding-audit.md`](branding-audit.md) (from `node build/audit-branding.mjs`)
+lists what users can still see. For 1.147.0: 375 UI strings that name VS Code
+or Microsoft (mostly setting descriptions, many in the Agents and Copilot
+features), 188 help links to Microsoft sites, 107 strings in built-in
+extensions (almost all the Copilot extension) and 17 `product.json` values
+(Copilot URLs, the publisher of three MIT Microsoft extensions bundled from
+GitHub releases, the "VS Code" keymap name).
+
+None of it is a Microsoft logo, and most reads as a description of upstream
+behavior; still, the plan says not to use the VS Code name in the product.
+Options, cheapest first: decide what to do with the built-in Copilot (removes
+most of the extension strings and URLs); rewrite "VS Code" to the product name
+in the built NLS message bundle after the upstream build (no core patch, but
+needs a reviewed list, since some strings mean the real VS Code, such as
+importing its settings); point help links at Synapse documentation once it
+exists.
 
 ## Extensions: Open VSX, not the Visual Studio Marketplace
 

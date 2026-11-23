@@ -4,23 +4,47 @@ name: Development builds
 # notarization and auto-update are added before the public beta (phase 4).
 on:
   workflow_dispatch:
+    inputs:
+      platform:
+        description: Which platform to build
+        type: choice
+        options: [all, linux, darwin, win32]
+        default: all
   schedule:
     - cron: "41 3 * * 1"
+
+# One run at a time per branch: a newer run replaces a queued or running one.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
 
 jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.m.outputs.matrix }}
+    steps:
+      - id: m
+        env:
+          ONLY: ${{ inputs.platform || 'all' }}
+        run: |
+          ALL='[{"os":"ubuntu-latest","platform":"linux","arch":"x64"},{"os":"macos-latest","platform":"darwin","arch":"arm64"},{"os":"windows-latest","platform":"win32","arch":"x64"}]'
+          echo "matrix=$(echo "$ALL" | jq -c --arg only "$ONLY" 'map(select($only == "all" or .platform == $only))')" >> "$GITHUB_OUTPUT"
+
   build:
+    needs: plan
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - { os: ubuntu-latest, platform: linux, arch: x64 }
-          - { os: macos-latest, platform: darwin, arch: arm64 }
-          - { os: windows-latest, platform: win32, arch: x64 }
+        include: ${{ fromJSON(needs.plan.outputs.matrix) }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 180
+    env:
+      # Outside the workspace: see build/lib.mjs.
+      SYNAPSE_VSCODE_DIR: ${{ github.workspace }}/../synapse-vscode
     steps:
       - uses: actions/checkout@v4
       - name: Read pinned upstream toolchain
@@ -35,6 +59,13 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libkrb5-dev libx11-dev libxkbfile-dev libsecret-1-dev
       - run: npm ci && npm run build
       - run: node build/build.mjs --platform ${{ matrix.platform }} --arch ${{ matrix.arch }}
+        env:
+          # Upstream's install downloads prebuilt binaries (e.g. ripgrep) through the GitHub API;
+          # unauthenticated requests from shared runners hit the rate limit (403).
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Move the build into the workspace (artifact paths cannot use ..)
+        shell: bash
+        run: mv "$SYNAPSE_VSCODE_DIR/../VSCode-${{ matrix.platform }}-${{ matrix.arch }}" .
       - uses: actions/upload-artifact@v4
         with:
           name: synapse-${{ matrix.platform }}-${{ matrix.arch }}

@@ -28,6 +28,8 @@ jobs:
     timeout-minutes: 240
     env:
       VERSION: ${{ github.ref_type == 'tag' && github.ref_name || 'v0.0.0-dev' }}
+      # Outside the workspace: see build/lib.mjs. The upstream build writes the app next to it.
+      SYNAPSE_VSCODE_DIR: ${{ github.workspace }}/../synapse-vscode
     steps:
       - uses: actions/checkout@v4
       - id: pin
@@ -40,6 +42,10 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libkrb5-dev libx11-dev libxkbfile-dev libsecret-1-dev rpm fakeroot dpkg
       - run: npm ci && npm run build
       - run: node build/build.mjs --platform ${{ matrix.platform }} --arch ${{ matrix.arch }}
+        env:
+          # Upstream's install downloads prebuilt binaries (e.g. ripgrep) through the GitHub API;
+          # unauthenticated requests from shared runners hit the rate limit (403).
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # ---- macOS: sign, notarize, zip --------------------------------------
       - name: Sign and notarize (macOS)
@@ -59,8 +65,8 @@ jobs:
           security unlock-keychain -p "$GITHUB_RUN_ID" "$KEYCHAIN"
           security import "$RUNNER_TEMP/cert.p12" -P "$MACOS_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN"
           security list-keychain -d user -s "$KEYCHAIN"
-          APP="VSCode-darwin-${{ matrix.arch }}/Synapse.app"
-          ENT=vscode/build/azure-pipelines/darwin/app-entitlements.plist
+          APP="$SYNAPSE_VSCODE_DIR/../VSCode-darwin-${{ matrix.arch }}/Synapse.app"
+          ENT="$SYNAPSE_VSCODE_DIR/build/azure-pipelines/darwin/app-entitlements.plist"
           codesign --deep --force --timestamp --options runtime --entitlements "$ENT" --sign "$MACOS_SIGNING_IDENTITY" "$APP"
           ditto -c -k --keepParent "$APP" notarize.zip
           xcrun notarytool submit notarize.zip --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" --wait
@@ -69,12 +75,12 @@ jobs:
         if: matrix.platform == 'darwin'
         run: |
           mkdir -p release
-          ditto -c -k --keepParent "VSCode-darwin-${{ matrix.arch }}/Synapse.app" "release/Synapse-darwin-${{ matrix.arch }}-${VERSION#v}.zip"
+          ditto -c -k --keepParent "$SYNAPSE_VSCODE_DIR/../VSCode-darwin-${{ matrix.arch }}/Synapse.app" "release/Synapse-darwin-${{ matrix.arch }}-${VERSION#v}.zip"
 
       # ---- Windows: installers, sign ---------------------------------------
       - name: Installers (Windows)
         if: matrix.platform == 'win32'
-        working-directory: vscode
+        working-directory: ${{ env.SYNAPSE_VSCODE_DIR }}
         run: |
           pnpm run gulp vscode-win32-x64-inno-updater
           pnpm run gulp vscode-win32-x64-user-setup
@@ -88,11 +94,11 @@ jobs:
         run: |
           $v = $env:VERSION.TrimStart('v')
           New-Item -ItemType Directory -Force release | Out-Null
-          $user = Get-ChildItem vscode/.build/win32-x64 -Recurse -Filter *.exe | Where-Object { $_.DirectoryName -like '*user-setup*' } | Select-Object -First 1
-          $system = Get-ChildItem vscode/.build/win32-x64 -Recurse -Filter *.exe | Where-Object { $_.DirectoryName -like '*system-setup*' } | Select-Object -First 1
+          $user = Get-ChildItem "$env:SYNAPSE_VSCODE_DIR/.build/win32-x64" -Recurse -Filter *.exe | Where-Object { $_.DirectoryName -like '*user-setup*' } | Select-Object -First 1
+          $system = Get-ChildItem "$env:SYNAPSE_VSCODE_DIR/.build/win32-x64" -Recurse -Filter *.exe | Where-Object { $_.DirectoryName -like '*system-setup*' } | Select-Object -First 1
           Copy-Item $user.FullName "release/SynapseUserSetup-x64-$v.exe"
           Copy-Item $system.FullName "release/SynapseSetup-x64-$v.exe"
-          Compress-Archive -Path VSCode-win32-x64/* -DestinationPath "release/Synapse-win32-x64-$v.zip"
+          Compress-Archive -Path "$env:SYNAPSE_VSCODE_DIR/../VSCode-win32-x64/*" -DestinationPath "release/Synapse-win32-x64-$v.zip"
           if ($env:WINDOWS_CERTIFICATE) {
             [IO.File]::WriteAllBytes("$env:RUNNER_TEMP/cert.pfx", [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE))
             $signtool = Get-ChildItem "C:/Program Files (x86)/Windows Kits/10/bin" -Recurse -Filter signtool.exe | Where-Object { $_.FullName -like '*x64*' } | Select-Object -Last 1
@@ -106,15 +112,15 @@ jobs:
         if: matrix.platform == 'linux'
         run: |
           mkdir -p release
-          tar -czf "release/synapse-linux-x64-${VERSION#v}.tar.gz" -C . VSCode-linux-x64
-          (cd vscode && pnpm run gulp vscode-linux-x64-prepare-deb && pnpm run gulp vscode-linux-x64-build-deb)
-          (cd vscode && pnpm run gulp vscode-linux-x64-prepare-rpm && pnpm run gulp vscode-linux-x64-build-rpm)
-          find vscode/.build/linux -name '*.deb' -exec cp {} release/ \;
-          find vscode/.build/linux -name '*.rpm' -exec cp {} release/ \;
+          tar -czf "release/synapse-linux-x64-${VERSION#v}.tar.gz" -C "$SYNAPSE_VSCODE_DIR/.." VSCode-linux-x64
+          (cd "$SYNAPSE_VSCODE_DIR" && pnpm run gulp vscode-linux-x64-prepare-deb && pnpm run gulp vscode-linux-x64-build-deb)
+          (cd "$SYNAPSE_VSCODE_DIR" && pnpm run gulp vscode-linux-x64-prepare-rpm && pnpm run gulp vscode-linux-x64-build-rpm)
+          find "$SYNAPSE_VSCODE_DIR/.build/linux" -name '*.deb' -exec cp {} release/ \;
+          find "$SYNAPSE_VSCODE_DIR/.build/linux" -name '*.rpm' -exec cp {} release/ \;
 
       - name: Record the build commit (the auto-updater compares it)
         shell: bash
-        run: git -C vscode rev-parse HEAD > release/commit-${{ matrix.platform }}-${{ matrix.arch }}.txt
+        run: git -C "$SYNAPSE_VSCODE_DIR" rev-parse HEAD > release/commit-${{ matrix.platform }}-${{ matrix.arch }}.txt
       - uses: actions/upload-artifact@v4
         with:
           name: release-${{ matrix.platform }}-${{ matrix.arch }}

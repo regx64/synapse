@@ -1,5 +1,5 @@
 {
-  "$comment": "Synapse overrides for Code - OSS product.json, merged by build/prepare.mjs. Every name, id and URL that a rename (risk L3) would touch lives in this file. Never use the Visual Studio Code name or logo (risk L4). Set \"updateUrl\" to the deployed build/update-server.mjs once one exists (see docs/release.md); without it, auto-update is off.",
+  "$comment": "Synapse overrides for Code - OSS product.json, merged by build/prepare.mjs. Every name, id and URL that a rename (risk L3) would touch lives in this file. Never use the Visual Studio Code name or logo (risk L4). Auto-update is off: \"updateUrl\" and \"quality\" are added together when an update server exists (see docs/release.md). Setting \"quality\" also turns on upstream's official-build-only Node compile cache step.",
   "nameShort": "Synapse",
   "nameLong": "Synapse",
   "applicationName": "synapse",
@@ -27,6 +27,9 @@
   "linuxIconName": "synapse",
   "urlProtocol": "synapse",
   "licenseName": "MIT",
+  "companyName": "The Synapse contributors",
+  "copyright": "Copyright (C) 2026 The Synapse contributors. MIT License.",
+  "publisherUrl": "https://github.com/regx64/synapse",
   "licenseUrl": "https://github.com/regx64/synapse/blob/main/LICENSE",
   "serverLicenseUrl": "https://github.com/regx64/synapse/blob/main/LICENSE",
   "reportIssueUrl": "https://github.com/regx64/synapse/issues/new",
@@ -44,6 +47,5 @@
   "$remove": [
     "voiceWsUrl",
     "webviewContentExternalBaseUrlTemplate"
-  ],
-  "quality": "stable"
+  ]
 }
