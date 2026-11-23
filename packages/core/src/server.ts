@@ -6,6 +6,7 @@ import { randomBytes, timingSafeEqual } from "node:crypto";
 import type { CoreEvent, DiscoveryFile } from "@synapse/protocol";
 import { CORE_API_VERSION, DISCOVERY_DIR, DISCOVERY_FILE, ErrorCodes, JsonRpcPeer, RpcError } from "@synapse/protocol";
 import type { SynapseCore } from "./core.js";
+import { addSecret } from "./redact.js";
 import { nowIso, shortHash } from "./util.js";
 
 export function defaultSocketPath(repoRoot: string): string {
@@ -31,6 +32,7 @@ export interface ServerHandle {
 export async function serve(core: SynapseCore, opts: { socket?: string } = {}): Promise<ServerHandle> {
   const socket = opts.socket ?? defaultSocketPath(core.repoRoot);
   const token = randomBytes(24).toString("hex");
+  addSecret(token);
   const handlers = core.handlers() as Record<string, (p: unknown) => unknown>;
   const peers = new Set<JsonRpcPeer>();
 
@@ -39,10 +41,12 @@ export async function serve(core: SynapseCore, opts: { socket?: string } = {}): 
     fs.rmSync(socket, { force: true });
   }
 
+  core.socket = socket;
   const server = net.createServer((conn) => {
     const peer = new JsonRpcPeer(conn, conn, { name: "client" });
     peers.add(peer);
     let authed = false;
+    let agentId: string | undefined;
     let subscribed = false;
     const onEvent = (ev: CoreEvent) => {
       if (subscribed) peer.notify("event", ev);
@@ -61,6 +65,14 @@ export async function serve(core: SynapseCore, opts: { socket?: string } = {}): 
       core.log(`client connected: ${p.client ?? "unknown"}`);
       return { version: CORE_API_VERSION, repoRoot: core.repoRoot, baseRef: core.store.baseRef, pid: process.pid };
     });
+    // Agents' MCP servers authenticate with an agent token and get only the agent API.
+    peer.onRequest("agent.hello", (p: { agentToken?: string }) => {
+      if (authed) throw new RpcError(ErrorCodes.Unauthorized, "Already authenticated");
+      const id = p?.agentToken ? core.agentForToken(p.agentToken) : undefined;
+      if (!id) throw new RpcError(ErrorCodes.Unauthorized, "Invalid agent token");
+      agentId = id;
+      return { agentId: id, agentName: core.store.getAgent(id)?.name ?? id };
+    });
     peer.onRequest("events.subscribe", (p: { sinceSeq?: number }) => {
       if (!authed) throw new RpcError(ErrorCodes.Unauthorized, "Call session.hello first");
       subscribed = true;
@@ -72,6 +84,11 @@ export async function serve(core: SynapseCore, opts: { socket?: string } = {}): 
       return null;
     });
     peer.onAnyRequest(async (params, { method }) => {
+      if (agentId) {
+        const h = (core.agentHandlers(agentId) as Record<string, (p: unknown) => unknown>)[method];
+        if (!h) throw new RpcError(ErrorCodes.Unauthorized, `Agents cannot call ${method}`);
+        return h(params ?? {});
+      }
       if (!authed) throw new RpcError(ErrorCodes.Unauthorized, "Call session.hello first");
       const h = handlers[method];
       if (!h) throw new RpcError(ErrorCodes.MethodNotFound, `Unknown method: ${method}`);

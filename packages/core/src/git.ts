@@ -110,7 +110,10 @@ export async function snapshotWorktree(cwd: string, message: string): Promise<st
     const tree = await git(cwd, ["write-tree"], { env });
     const headTree = await git(cwd, ["rev-parse", `${head}^{tree}`]);
     if (tree === headTree) return head;
-    return await git(cwd, ["commit-tree", tree, "-p", head, "-m", message], { env });
+    // Deterministic: the same tree on the same parent always gives the same commit,
+    // so "did this agent change anything since?" is a plain comparison.
+    const date = `${await git(cwd, ["log", "-1", "--format=%ct", head])} +0000`;
+    return await git(cwd, ["commit-tree", tree, "-p", head, "-m", message], { env: { ...env, GIT_AUTHOR_DATE: date, GIT_COMMITTER_DATE: date } });
   } finally {
     await fs.rm(indexFile, { force: true });
   }

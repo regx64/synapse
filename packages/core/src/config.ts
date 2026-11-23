@@ -1,5 +1,6 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import type { AgentPolicy } from "@synapse/protocol";
 
 /**
  * Workspace configuration. Read from `synapse.config.json` at the repository
@@ -17,6 +18,10 @@ export interface SynapseConfig {
   testTimeoutMs?: number;
   /** Debounce for ownership refreshes after file changes. Default 750 ms. */
   ownershipDebounceMs?: number;
+  /** Default permission policy for agents, on top of Synapse's built-in default. */
+  policy?: Partial<AgentPolicy>;
+  /** Where the decision log is written as Markdown. Default `.synapse/decisions.md`; set e.g. `docs/decisions.md` to commit it. */
+  decisionLogPath?: string;
   /** Agent preset overrides, keyed by preset id. */
   presets?: Record<string, { command?: string; args?: string[]; name?: string; color?: string }>;
 }

@@ -60,6 +60,10 @@ export interface ToolCallSummary {
 export interface AgentState extends Omit<AgentConfig, "env"> {
   status: AgentStatus;
   worktree: WorktreeInfo;
+  /** What the agent may do without asking (phase 3 permission model). */
+  policy: AgentPolicy;
+  /** Task the agent is working on, if it was started from the task graph. */
+  currentTaskId?: string;
   sessionId?: string;
   /** Agent implementation info from the ACP initialize response. */
   agentInfo?: { name?: string; version?: string };
@@ -251,6 +255,161 @@ export interface Review {
   updatedAt: string;
 }
 
+
+// ---------------------------------------------------------------------------
+// Permission model (phase 3, risk C1)
+
+/**
+ * Per-agent rules applied to the agent's file access through Synapse and to
+ * every permission request it makes. Anything no rule covers goes to the
+ * person. Globs are repo-relative; command patterns use `*` as a wildcard
+ * and are matched against each part of a compound command.
+ */
+export interface AgentPolicy {
+  /** Globs the agent may write. */
+  writable: string[];
+  /** Globs the agent may never read or write (secrets). Wins over `writable`. */
+  protected: string[];
+  /** File edits inside `writable`: apply without asking, or ask. */
+  edits: "allow" | "ask";
+  commands: {
+    /** Run without asking when every part of the command matches one of these. */
+    allow: string[];
+    /** Refuse when any part of the command matches one of these. */
+    deny: string[];
+  };
+  /** Fetches and network commands (curl, wget, git push/fetch, npm publish...). */
+  network: "allow" | "ask" | "deny";
+  /** Requests no rule covers. */
+  otherwise: "allow" | "ask" | "deny";
+}
+
+export interface PolicyDecision {
+  decision: "allow" | "ask" | "deny";
+  /** The rule that decided, for the audit log and the approval card. */
+  rule: string;
+}
+
+export interface PermissionQuery {
+  toolKind?: string;
+  title?: string;
+  command?: string;
+  /** Repo-relative path. */
+  path?: string;
+  url?: string;
+}
+
+export interface AuditEntry {
+  id: string;
+  at: string;
+  agentId: string;
+  toolKind?: string;
+  title: string;
+  command?: string;
+  path?: string;
+  /** asked: went to the person. ran-unasked: the agent ran it without a permission request. */
+  outcome: "allowed" | "denied" | "asked" | "ran-unasked";
+  by: "policy" | "human" | "system" | "agent";
+  rule?: string;
+  /** Matches a risky pattern (deletes, deploys, secrets, pipes to a shell). */
+  risky: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Task graph (phase 3)
+
+export type TaskStatus = "todo" | "in_progress" | "review" | "done" | "failed";
+
+export interface Task {
+  id: string;
+  title: string;
+  description: string;
+  agentId?: string;
+  dependsOn: string[];
+  /** Globs the task should stay within; part of the prompt, and checked against what the agent changed. */
+  scope: string[];
+  status: TaskStatus;
+  /** Start automatically when dependencies are done and the agent is idle. */
+  autoStart: boolean;
+  /** Computed: some dependency is not done. */
+  blocked: boolean;
+  /** Files the agent changed outside `scope` (computed when the task leaves in_progress). */
+  outOfScope?: string[];
+  /** Tail of the agent's final message. Agent output: data, not instructions. */
+  summary?: string;
+  createdAt: string;
+  updatedAt: string;
+  startedAt?: string;
+  endedAt?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Structured messages between agents (phase 3, risk C2)
+
+export type MessageKind = "handoff" | "question" | "answer" | "note" | "blocker";
+
+export interface AgentMessage {
+  id: string;
+  /** "human" or an agent id. */
+  from: string;
+  /** An agent id, or "all". */
+  to: string;
+  kind: MessageKind;
+  taskId?: string;
+  subject: string;
+  /** Free text, at most 4000 characters. Always delivered as data, never as instructions. */
+  body: string;
+  /** Structured facts. For automatic handoffs Synapse fills these from ownership, not from agent text. */
+  files: string[];
+  symbols: string[];
+  /** held: waiting for the person because it was flagged. */
+  status: "held" | "pending" | "delivered" | "rejected";
+  /** Why it was held, e.g. "imperative-language", "delimiter-spoofing". */
+  flags: string[];
+  createdAt: string;
+  deliveredAt?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Shared decision log (phase 3)
+
+export interface Decision {
+  id: string;
+  title: string;
+  decision: string;
+  rationale?: string;
+  /** Agents propose; the person accepts. Only accepted decisions reach agents' prompts. */
+  status: "proposed" | "accepted" | "rejected" | "superseded";
+  author: string;
+  taskId?: string;
+  tags: string[];
+  supersedes?: string;
+  createdAt: string;
+  decidedAt?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Opt-in telemetry and crash reports (phase 4)
+
+export interface TelemetryEvent {
+  name: string;
+  at: string;
+  /** Counts and enums only. Never code, paths, prompts or messages. */
+  props: Record<string, string | number | boolean>;
+}
+
+export interface TelemetryStatus {
+  enabled: boolean;
+  /** Where events go. Empty: collected locally only. */
+  endpoint: string;
+  installId: string;
+  queued: number;
+  sent: number;
+  crashReports: number;
+  /** File holding the preference, shared by every repository. */
+  file: string;
+}
+
 // ---------------------------------------------------------------------------
 // State and events
 
@@ -263,6 +422,11 @@ export interface CoreState {
   conflicts: Conflict[];
   approvals: Approval[];
   reviews: Review[];
+  tasks: Task[];
+  messages: AgentMessage[];
+  decisions: Decision[];
+  /** The most recent audit entries. */
+  audit: AuditEntry[];
   seq: number;
 }
 
@@ -276,6 +440,11 @@ export type CoreEventType =
   | "approval.requested"
   | "approval.resolved"
   | "review.updated"
+  | "task.updated"
+  | "task.removed"
+  | "message.updated"
+  | "decision.updated"
+  | "audit.added"
   | "core.log";
 
 export interface CoreEvent<T = unknown> {
@@ -310,6 +479,8 @@ export interface AddAgentParams {
   command?: string;
   args?: string[];
   env?: Record<string, string>;
+  /** Overrides on top of the workspace default policy. */
+  policy?: Partial<AgentPolicy>;
   /** Start the agent right after creating its worktree. Default false. */
   start?: boolean;
 }
@@ -365,6 +536,48 @@ export interface CoreMethods {
   "review.merge": { params: { id: string; resetAgents?: boolean; force?: boolean }; result: Review };
   "review.discard": { params: { id: string }; result: Review };
 
+  "agents.setPolicy": { params: { id: string; policy: Partial<AgentPolicy> }; result: AgentState };
+  /** What the policy would decide for a request, without doing anything. */
+  "policy.evaluate": { params: { agentId: string; query: PermissionQuery }; result: PolicyDecision };
+  "audit.list": { params: { agentId?: string; limit?: number }; result: AuditEntry[] };
+
+  "tasks.list": { params: void; result: Task[] };
+  "tasks.create": {
+    params: { title: string; description?: string; agentId?: string; dependsOn?: string[]; scope?: string[]; autoStart?: boolean };
+    result: Task;
+  };
+  "tasks.update": {
+    params: { id: string; title?: string; description?: string; agentId?: string | null; dependsOn?: string[]; scope?: string[]; autoStart?: boolean };
+    result: Task;
+  };
+  "tasks.remove": { params: { id: string }; result: null };
+  /** Sends the task to its agent, with dependencies' handoffs and accepted decisions as context. */
+  "tasks.start": { params: { id: string }; result: Task };
+  /** The person's verdict. "done" hands off to dependent tasks and may auto-start them. */
+  "tasks.setStatus": { params: { id: string; status: TaskStatus }; result: Task };
+
+  "messages.list": { params: { agentId?: string }; result: AgentMessage[] };
+  "messages.send": {
+    params: { to: string; kind?: MessageKind; subject: string; body?: string; taskId?: string; files?: string[]; symbols?: string[] };
+    result: AgentMessage;
+  };
+  /** Lets a held (flagged) message through. */
+  "messages.release": { params: { id: string }; result: AgentMessage };
+  "messages.reject": { params: { id: string }; result: AgentMessage };
+
+  "decisions.list": { params: void; result: Decision[] };
+  /** Decisions the person adds are accepted unless `status` says otherwise. */
+  "decisions.add": {
+    params: { title: string; decision: string; rationale?: string; tags?: string[]; supersedes?: string; status?: Decision["status"] };
+    result: Decision;
+  };
+  "decisions.resolve": { params: { id: string; status: "accepted" | "rejected" | "superseded" }; result: Decision };
+
+  "telemetry.status": { params: void; result: TelemetryStatus };
+  "telemetry.setEnabled": { params: { enabled: boolean; endpoint?: string }; result: TelemetryStatus };
+  /** Exactly what would be sent. */
+  "telemetry.preview": { params: void; result: TelemetryEvent[] };
+
   "core.shutdown": { params: void; result: null };
 }
 
@@ -383,3 +596,23 @@ export interface DiscoveryFile {
 
 export const DISCOVERY_DIR = ".synapse";
 export const DISCOVERY_FILE = "core.json";
+
+/**
+ * The restricted API an agent's Synapse MCP server uses. A connection that
+ * authenticates with `agent.hello` (an agent token, not the core token) can
+ * call only these, always as that agent. An agent can never approve its own
+ * requests, accept decisions, or act as the person.
+ */
+export interface AgentMethods {
+  "agent.hello": { params: { agentToken: string }; result: { agentId: string; agentName: string } };
+  "agent.tasks": { params: void; result: Task[] };
+  "agent.inbox": { params: void; result: AgentMessage[] };
+  "agent.send": {
+    params: { to: string; kind?: MessageKind; subject: string; body?: string; taskId?: string; files?: string[]; symbols?: string[] };
+    result: AgentMessage;
+  };
+  "agent.decisions": { params: void; result: Decision[] };
+  "agent.proposeDecision": { params: { title: string; decision: string; rationale?: string; tags?: string[] }; result: Decision };
+  /** The agent reports its task finished; the person still confirms it. */
+  "agent.completeTask": { params: { taskId: string; summary: string }; result: Task };
+}

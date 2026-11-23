@@ -4,6 +4,8 @@ import * as path from "node:path";
 import { parseArgs } from "node:util";
 import { SynapseCore } from "./core.js";
 import { serve } from "./server.js";
+import { writeCrashReport } from "./telemetry.js";
+import { redact } from "./redact.js";
 
 /**
  * synapse-core entry point. Runs in the foreground; UIs spawn it detached.
@@ -27,7 +29,7 @@ async function main(): Promise<void> {
 
   let logStream: fs.WriteStream | undefined;
   const log = (msg: string) => {
-    const line = `${new Date().toISOString()} ${msg}\n`;
+    const line = `${new Date().toISOString()} ${redact(msg)}\n`;
     if (!values.quiet) process.stderr.write(line);
     logStream?.write(line);
   };
@@ -53,6 +55,17 @@ async function main(): Promise<void> {
   process.on("SIGINT", () => void shutdown("SIGINT"));
   process.on("SIGTERM", () => void shutdown("SIGTERM"));
 }
+
+// Crash reports are written locally (redacted) and sent only if the user opted in to telemetry.
+process.on("uncaughtException", (err) => {
+  const file = writeCrashReport(err, "uncaughtException");
+  process.stderr.write(`synapse-core crashed: ${err.message}${file ? ` (report: ${file})` : ""}\n`);
+  process.exit(1);
+});
+process.on("unhandledRejection", (err) => {
+  writeCrashReport(err, "unhandledRejection");
+  process.stderr.write(`synapse-core: unhandled rejection: ${(err as Error)?.message ?? String(err)}\n`);
+});
 
 main().catch((err: Error) => {
   process.stderr.write(`synapse-core: ${err.message}\n`);

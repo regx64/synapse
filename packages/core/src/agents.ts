@@ -1,13 +1,15 @@
 import * as fs from "node:fs";
 import * as fsp from "node:fs/promises";
 import * as path from "node:path";
-import type { AddAgentParams, AgentState, Approval, PresetInfo, ToolCallSummary } from "@synapse/protocol";
+import type { AddAgentParams, AgentPolicy, AgentState, Approval, AuditEntry, PermissionQuery, PolicyDecision, PresetInfo, ToolCallSummary } from "@synapse/protocol";
 import { CORE_API_VERSION, ErrorCodes, RpcError } from "@synapse/protocol";
-import { AcpAgentProcess, type AcpPermissionOutcome, type AcpPermissionRequest, type AcpPlanUpdate, type AcpSessionUpdate, type AcpToolCallUpdate } from "./acp.js";
+import { AcpAgentProcess, type AcpMcpServerStdio, type AcpPermissionOutcome, type AcpPermissionRequest, type AcpPlanUpdate, type AcpSessionUpdate, type AcpToolCallUpdate } from "./acp.js";
 import type { StateStore } from "./store.js";
 import type { WorktreeManager } from "./worktrees.js";
 import { AGENT_COLORS, AGENT_ID_RE, debounce, isInside, nowIso, randomId, toPosix, truncateTail } from "./util.js";
 import { revParse } from "./git.js";
+import { commandFromRawInput, evaluatePermission, isRisky, matchesAny, mergePolicy, pathFromRawInput, urlFromRawInput, validatePolicy } from "./policy.js";
+import { addSecret, redact } from "./redact.js";
 
 const MAX_TOOL_CALLS = 30;
 const MAX_MESSAGE_TAIL = 4000;
@@ -19,6 +21,12 @@ export interface AgentManagerDeps {
   /** Called when an agent's files may have changed. */
   onFilesChanged: (agentId: string) => void;
   log: (msg: string) => void;
+  /** The workspace default policy (DEFAULT_POLICY plus synapse.config.json). */
+  defaultPolicy: () => AgentPolicy;
+  /** Called when a prompt turn ends. */
+  onTurnEnd?: (agentId: string, stopReason: string, error?: string) => void;
+  /** The Synapse MCP server to give an agent's session, if any. */
+  mcpServerFor?: (agentId: string) => AcpMcpServerStdio | undefined;
 }
 
 /**
@@ -30,6 +38,9 @@ export class AgentManager {
   private readonly procs = new Map<string, AcpAgentProcess>();
   private readonly pendingPermissions = new Map<string, { agentId: string; resolve: (o: AcpPermissionOutcome) => void; options: Approval["options"] }>();
   private readonly watchers = new Map<string, fs.FSWatcher>();
+  /** Tool calls that went through a permission request, and raw inputs seen, for the audit log. */
+  private readonly askedToolCalls = new Set<string>();
+  private readonly toolInputs = new Map<string, unknown>();
 
   constructor(private readonly deps: AgentManagerDeps) {}
 
@@ -64,6 +75,8 @@ export class AgentManager {
       params.color ??
       (preset && !usedColors.has(preset.color) ? preset.color : AGENT_COLORS.find((c) => !usedColors.has(c)) ?? AGENT_COLORS[existing.size % AGENT_COLORS.length]!);
 
+    if (params.policy) this.checkedPolicy(mergePolicy(this.deps.defaultPolicy(), params.policy));
+    for (const v of Object.values(params.env ?? {})) addSecret(v);
     const worktree = await this.deps.worktrees.create(id, this.store.baseRef);
     const now = nowIso();
     const agent = this.store.addAgent(
@@ -76,6 +89,7 @@ export class AgentManager {
         args: params.args ?? preset?.args ?? [],
         status: "stopped",
         worktree,
+        policy: this.checkedPolicy(mergePolicy(this.deps.defaultPolicy(), params.policy)),
         toolCalls: [],
         createdAt: now,
         updatedAt: now,
@@ -120,7 +134,7 @@ export class AgentManager {
       },
     );
     this.procs.set(id, proc);
-    proc.on("stderr", (text: string) => this.store.emitEvent("agent.output", { agentId: id, kind: "stderr", text }));
+    proc.on("stderr", (text: string) => this.store.emitEvent("agent.output", { agentId: id, kind: "stderr", text: redact(text) }));
     proc.on("exit", (code: number | null, signal: string | null) => {
       if (this.procs.get(id) !== proc) return;
       this.procs.delete(id);
@@ -136,7 +150,8 @@ export class AgentManager {
       });
     });
     try {
-      const { sessionId, init } = await proc.start();
+      const mcp = this.deps.mcpServerFor?.(id);
+      const { sessionId, init } = await proc.start(mcp ? [mcp] : []);
       this.watch(id, agent.worktree.path);
       return this.store.updateAgent(id, {
         status: "idle",
@@ -191,6 +206,7 @@ export class AgentManager {
     });
     this.store.emitEvent("agent.output", { agentId: id, kind: "turn", text: `turn ended: ${stopReason}${error ? ` (${error})` : ""}` });
     this.deps.onFilesChanged(id);
+    this.deps.onTurnEnd?.(id, stopReason, error);
   }
 
   cancel(id: string): void {
@@ -224,8 +240,58 @@ export class AgentManager {
     this.pendingPermissions.delete(approvalId);
     pending?.resolve(chosen ? { outcome: "selected", optionId: chosen } : { outcome: "cancelled" });
     const resolved = this.store.resolveApproval(approvalId, chosen ? "resolved" : "cancelled", { optionId: chosen, by: "human", at: nowIso() })!;
+    const kind = approval.options.find((o) => o.optionId === chosen)?.kind ?? "";
+    this.audit(approval.agentId, {
+      toolKind: approval.toolKind,
+      title: approval.title,
+      command: commandFromRawInput(approval.detail),
+      outcome: kind.startsWith("allow") ? "allowed" : "denied",
+      by: "human",
+    });
     this.refreshApprovalStatus(approval.agentId);
     return resolved;
+  }
+
+  setPolicy(id: string, patch: Partial<AgentPolicy>): AgentState {
+    const agent = this.require(id);
+    const policy = this.checkedPolicy(mergePolicy(agent.policy, patch));
+    return this.store.updateAgent(id, { policy })!;
+  }
+
+  /** What the agent's policy decides for a request. Paths may be absolute (inside the worktree) or repo-relative. */
+  evaluate(id: string, q: PermissionQuery): PolicyDecision {
+    const agent = this.require(id);
+    let rel = q.path;
+    if (rel && path.isAbsolute(rel)) {
+      if (!isInside(agent.worktree.path, rel)) return { decision: "deny", rule: "outside the agent's worktree" };
+      rel = toPosix(path.relative(agent.worktree.path, rel));
+    }
+    return evaluatePermission(agent.policy, { ...q, path: rel });
+  }
+
+  private checkedPolicy(p: AgentPolicy): AgentPolicy {
+    try {
+      validatePolicy(p);
+    } catch (err) {
+      throw new RpcError(ErrorCodes.InvalidParams, (err as Error).message);
+    }
+    return p;
+  }
+
+  private audit(agentId: string, e: Omit<AuditEntry, "id" | "at" | "agentId" | "risky">): void {
+    const entry: AuditEntry = {
+      id: randomId("au"),
+      at: nowIso(),
+      agentId,
+      ...e,
+      title: redact(e.title),
+      command: e.command ? redact(e.command) : undefined,
+      risky: isRisky(e.command) || (!!e.path && /(^|\/)\.env|\.pem$|id_rsa/.test(e.path)),
+    };
+    this.store.addAudit(entry);
+    if (entry.outcome === "ran-unasked" && entry.risky) {
+      this.store.emitEvent("core.log", { level: "warning", message: `${agentId} ran a risky command without asking: ${entry.command ?? entry.title}` });
+    }
   }
 
   async shutdown(): Promise<void> {
@@ -239,20 +305,26 @@ export class AgentManager {
   // -------------------------------------------------------------------------
   // ACP client handlers
 
-  private resolveAgentPath(agentId: string, p: string): string {
+  private resolveAgentPath(agentId: string, p: string, mode: "read" | "write"): string {
     const agent = this.require(agentId);
     const abs = path.isAbsolute(p) ? p : path.join(agent.worktree.path, p);
-    if (!isInside(agent.worktree.path, abs)) {
-      throw new RpcError(ErrorCodes.InvalidParams, `Access denied: ${p} is outside this agent's worktree (${agent.worktree.path})`);
-    }
-    if (toPosix(path.relative(agent.worktree.path, abs)).split("/")[0] === ".git") {
-      throw new RpcError(ErrorCodes.InvalidParams, "Access denied: .git is managed by Synapse");
-    }
+    const inside = isInside(agent.worktree.path, abs);
+    const shown = inside ? toPosix(path.relative(agent.worktree.path, abs)) : p;
+    const deny = (why: string, rule: string) => {
+      this.audit(agentId, { toolKind: mode === "read" ? "read" : "edit", title: `${mode} ${shown}`, path: shown, outcome: "denied", by: "policy", rule });
+      throw new RpcError(ErrorCodes.InvalidParams, `Access denied: ${why}`);
+    };
+    if (!inside) deny(`${p} is outside this agent's worktree (${agent.worktree.path})`, "outside the agent's worktree");
+    const rel = toPosix(path.relative(agent.worktree.path, abs));
+    if (rel.split("/")[0] === ".git") deny(".git is managed by Synapse", ".git");
+    const prot = matchesAny(agent.policy.protected, rel);
+    if (prot) deny(`${rel} is protected by policy (${prot})`, `protected: ${prot}`);
+    if (mode === "write" && !matchesAny(agent.policy.writable, rel)) deny(`${rel} is not writable by policy`, "outside writable");
     return abs;
   }
 
   private async readTextFile(agentId: string, p: { path: string; line?: number; limit?: number }): Promise<{ content: string }> {
-    const abs = this.resolveAgentPath(agentId, p.path);
+    const abs = this.resolveAgentPath(agentId, p.path, "read");
     let content = await fsp.readFile(abs, "utf8");
     if (p.line !== undefined || p.limit !== undefined) {
       const lines = content.split("\n");
@@ -263,7 +335,7 @@ export class AgentManager {
   }
 
   private async writeTextFile(agentId: string, p: { path: string; content: string }): Promise<null> {
-    const abs = this.resolveAgentPath(agentId, p.path);
+    const abs = this.resolveAgentPath(agentId, p.path, "write");
     await fsp.mkdir(path.dirname(abs), { recursive: true });
     await fsp.writeFile(abs, p.content, "utf8");
     this.deps.onFilesChanged(agentId);
@@ -273,14 +345,32 @@ export class AgentManager {
   private requestPermission(agentId: string, req: AcpPermissionRequest): Promise<{ outcome: AcpPermissionOutcome }> {
     const id = randomId("ap");
     const tc = req.toolCall ?? { toolCallId: "?" };
+    this.askedToolCalls.add(`${agentId}:${tc.toolCallId}`);
+    const raw = tc.rawInput ?? this.toolInputs.get(`${agentId}:${tc.toolCallId}`);
+    const command = commandFromRawInput(raw);
+    const filePath = pathFromRawInput(raw) ?? tc.locations?.[0]?.path;
+    const toolKind = tc.kind ?? this.store.getAgent(agentId)?.toolCalls.find((c) => c.id === tc.toolCallId)?.kind;
+    const verdict = this.evaluate(agentId, { toolKind, title: tc.title, command, path: filePath, url: urlFromRawInput(raw) });
+    const options = (req.options ?? []).map((o) => ({ optionId: o.optionId, name: o.name, kind: o.kind }));
+    const auditBase = { toolKind, title: tc.title ?? toolKind ?? "permission", command, path: filePath };
+
+    if (verdict.decision !== "ask") {
+      const want = verdict.decision === "allow" ? "allow" : "reject";
+      const option = options.find((o) => o.kind === `${want}_once`) ?? options.find((o) => o.kind.startsWith(want));
+      if (option || verdict.decision === "deny") {
+        this.audit(agentId, { ...auditBase, outcome: verdict.decision === "allow" ? "allowed" : "denied", by: "policy", rule: verdict.rule });
+        return Promise.resolve({ outcome: option ? { outcome: "selected", optionId: option.optionId } : { outcome: "cancelled" } });
+      }
+    }
+    this.audit(agentId, { ...auditBase, outcome: "asked", by: "policy", rule: verdict.rule });
     const approval: Approval = {
       id,
       agentId,
       title: tc.title ?? tc.kind ?? "Permission requested",
       toolKind: tc.kind,
-      detail: tc.rawInput,
+      detail: raw,
       locations: tc.locations?.map((l) => l.path),
-      options: (req.options ?? []).map((o) => ({ optionId: o.optionId, name: o.name, kind: o.kind })),
+      options,
       status: "pending",
       createdAt: nowIso(),
     };
@@ -337,6 +427,17 @@ export class AgentManager {
         };
         if (idx >= 0) calls[idx] = next;
         else calls.push(next);
+        const key = `${agentId}:${u.toolCallId}`;
+        if (u.rawInput !== undefined) this.toolInputs.set(key, u.rawInput);
+        if (next.status === "completed" && next.kind === "execute" && (!prev || prev.status !== "completed")) {
+          if (!this.askedToolCalls.has(key)) {
+            const command = commandFromRawInput(this.toolInputs.get(key));
+            this.audit(agentId, { toolKind: "execute", title: next.title, command, outcome: "ran-unasked", by: "agent" });
+          }
+          this.askedToolCalls.delete(key);
+          this.toolInputs.delete(key);
+        }
+        if (this.toolInputs.size > 500) this.toolInputs.delete(this.toolInputs.keys().next().value!);
         this.store.updateAgent(agentId, { toolCalls: calls.slice(-MAX_TOOL_CALLS) });
         if (!prev || prev.status !== next.status) {
           this.store.emitEvent("agent.output", { agentId, kind: "tool", text: `${next.status}: ${next.title}` });

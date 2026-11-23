@@ -29,6 +29,7 @@ const esm = {
   banner: { js: "import { createRequire as __cr } from 'node:module'; const require = __cr(import.meta.url);" },
 };
 await build({ ...esm, entryPoints: [require.resolve("@synapse/core/main")], outfile: path.join(out, "core", "main.mjs") });
+await build({ ...esm, entryPoints: [path.join(path.dirname(require.resolve("@synapse/core/main")), "mcp-server.js")], outfile: path.join(out, "core", "mcp-server.mjs") });
 await build({ ...esm, entryPoints: [path.join(path.dirname(require.resolve("@synapse/mock-agent/package.json")), "dist/src/main.js")], outfile: path.join(out, "core", "mock-agent.mjs") });
 
 // tree-sitter runtime and the grammars synapse-core parses.

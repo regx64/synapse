@@ -114,6 +114,26 @@
         "command": "synapse.agentMenu",
         "title": "Agent Actions\u2026",
         "category": "Synapse"
+      },
+      {
+        "command": "synapse.editPolicy",
+        "title": "Edit Agent Permission Policy",
+        "category": "Synapse"
+      },
+      {
+        "command": "synapse.newTask",
+        "title": "New Task\u2026",
+        "category": "Synapse"
+      },
+      {
+        "command": "synapse.telemetry",
+        "title": "Telemetry Settings\u2026",
+        "category": "Synapse"
+      },
+      {
+        "command": "synapse.initConfig",
+        "title": "Create synapse.config.json",
+        "category": "Synapse"
       }
     ],
     "menus": {
@@ -163,9 +183,71 @@
           "type": "boolean",
           "default": true,
           "description": "Show which agent is changing a symbol at the end of its first line."
+        },
+        "synapse.showWalkthroughOnStart": {
+          "type": "boolean",
+          "default": true,
+          "description": "Open the Synapse walkthrough the first time a repository is opened."
         }
       }
-    }
+    },
+    "walkthroughs": [
+      {
+        "id": "synapse.gettingStarted",
+        "title": "Get started with Synapse",
+        "description": "Run several AI agents in one repository without them breaking each other's work.",
+        "steps": [
+          {
+            "id": "config",
+            "title": "Configure the workspace",
+            "description": "Tell Synapse how to test the combined result and where to keep the decision log.\n[Create synapse.config.json](command:synapse.initConfig)",
+            "media": {
+              "markdown": "media/walkthrough/config.md"
+            }
+          },
+          {
+            "id": "agents",
+            "title": "Add two agents",
+            "description": "Each agent gets its own git worktree and branch. Use your own Claude or Codex login.\n[Add an agent](command:synapse.addAgent)",
+            "media": {
+              "markdown": "media/walkthrough/agents.md"
+            }
+          },
+          {
+            "id": "tasks",
+            "title": "Split the work into tasks",
+            "description": "Assign tasks to agents and set dependencies. Finished work is handed to the next agent with what it changed.\n[New task](command:synapse.newTask)",
+            "media": {
+              "markdown": "media/walkthrough/tasks.md"
+            }
+          },
+          {
+            "id": "conflicts",
+            "title": "Watch for conflicts",
+            "description": "Code another agent is changing is tinted in its color; conflicts show in the Problems panel before anything is merged.\n[Open the board](command:workbench.view.extension.synapse)",
+            "media": {
+              "markdown": "media/walkthrough/conflicts.md"
+            }
+          },
+          {
+            "id": "policy",
+            "title": "Decide what agents may do",
+            "description": "Edits in their own worktree are allowed; commands not on the allow list come to you.\n[Edit a policy](command:synapse.editPolicy)",
+            "media": {
+              "markdown": "media/walkthrough/policy.md"
+            }
+          },
+          {
+            "id": "review",
+            "title": "Review and merge in one pass",
+            "description": "Merge every agent's work in a scratch worktree, run your tests on the combined result, then merge.\n[Combined review](command:synapse.prepareReview)",
+            "media": {
+              "markdown": "media/walkthrough/review.md"
+            }
+          }
+        ]
+      }
+    ]
   },
   "scripts": {
     "build": "node esbuild.mjs",

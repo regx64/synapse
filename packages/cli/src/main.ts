@@ -13,6 +13,7 @@ import {
   type Conflict,
   type CoreEvent,
   type Review,
+  type Task,
 } from "@synapse/client";
 
 const HELP = `synapse — direct several AI agents in one workspace
@@ -40,6 +41,28 @@ Coordination
   approve <approval-id> [--option ID]
   reject <approval-id>
   watch                              stream events
+
+Tasks (the person splits a goal and assigns subtasks)
+  tasks                              the task graph
+  task add <title> [--agent ID] [--after t-1,t-2] [--scope GLOB,..] [--auto] [--description TEXT]
+  task start|done|fail|review|todo|rm <task-id>
+
+Messages and decisions
+  messages [--agent ID]              structured messages between agents
+  message send <agent|all> <subject> [--body TEXT] [--kind handoff|question|answer|note|blocker]
+  message release|reject <id>        held (flagged) messages
+  decisions                          the shared decision log
+  decision add <title> --decision TEXT [--rationale TEXT] [--tags a,b]
+  decision accept|reject|supersede <id>
+
+Permissions
+  policy <agent>                     show an agent's policy
+  policy <agent> --set JSON          change it, e.g. --set '{"network":"deny"}'
+  policy <agent> --try CMD           what the policy decides for a command
+  audit [--agent ID] [--limit N]     what agents ran, and who allowed it
+
+Telemetry (off by default)
+  telemetry status|enable|disable|preview [--endpoint URL]
 
 Review
   review [--agents a,b] [--no-tests] combine agents' work, test it, show the result
@@ -72,11 +95,24 @@ async function main(argv: string[]): Promise<number> {
       agent: { type: "string" },
       agents: { type: "string" },
       check: { type: "boolean" },
+      try: { type: "string" },
       option: { type: "string" },
       "no-tests": { type: "boolean" },
       "reset-agents": { type: "boolean" },
       force: { type: "boolean" },
       "keep-worktree": { type: "boolean" },
+      description: { type: "string" },
+      after: { type: "string" },
+      scope: { type: "string" },
+      auto: { type: "boolean" },
+      kind: { type: "string" },
+      body: { type: "string" },
+      decision: { type: "string" },
+      rationale: { type: "string" },
+      tags: { type: "string" },
+      set: { type: "string" },
+      endpoint: { type: "string" },
+      limit: { type: "string" },
     },
   });
   const [cmd, sub, ...rest] = positionals;
@@ -246,6 +282,130 @@ async function run(c: SynapseClient, cmd: string, sub: string | undefined, rest:
       out(r, () => renderReview(r));
       return r.status === "ready" ? 0 : 2;
     }
+    case "tasks": {
+      const list = await c.call("tasks.list");
+      out(list, () => renderTasks(list));
+      return 0;
+    }
+    case "task": {
+      const action = need(sub, "task action");
+      const csv = (x: unknown) => (typeof x === "string" && x ? x.split(",").map((s) => s.trim()).filter(Boolean) : undefined);
+      if (action === "add") {
+        const t = await c.call("tasks.create", {
+          title: need(rest.join(" "), "task title"),
+          description: v.description as string | undefined,
+          agentId: v.agent as string | undefined,
+          dependsOn: csv(v.after),
+          scope: csv(v.scope),
+          autoStart: !!v.auto,
+        });
+        out(t, () => `added ${t.id}: ${t.title}${t.blocked ? " (blocked)" : ""}`);
+        return 0;
+      }
+      const id = need(rest[0], "task id");
+      if (action === "rm") {
+        await c.call("tasks.remove", { id });
+        out({ removed: id }, () => `removed ${id}`);
+        return 0;
+      }
+      const status = { start: "in_progress", done: "done", fail: "failed", review: "review", todo: "todo" }[action];
+      if (!status) throw new Error(`Unknown task action: ${action}`);
+      const t = action === "start" ? await c.call("tasks.start", { id }) : await c.call("tasks.setStatus", { id, status: status as "done" });
+      out(t, () => `${t.id}: ${t.status}`);
+      return 0;
+    }
+    case "messages": {
+      const list = await c.call("messages.list", { agentId: v.agent as string | undefined });
+      out(list, () =>
+        list.length
+          ? list.map((m) => `  ${m.id}  [${m.status}${m.flags.length ? `: ${m.flags.join(",")}` : ""}] ${m.kind} ${m.from} → ${m.to}: ${m.subject}${m.body ? `\n      ${m.body.slice(0, 200).replace(/\n/g, " ")}` : ""}`).join("\n")
+          : "no messages",
+      );
+      return 0;
+    }
+    case "message": {
+      const action = need(sub, "message action");
+      if (action === "send") {
+        const m = await c.call("messages.send", {
+          to: need(rest[0], "recipient"),
+          subject: need(rest.slice(1).join(" "), "subject"),
+          body: v.body as string | undefined,
+          kind: v.kind as "note" | undefined,
+        });
+        out(m, () => `${m.id}: ${m.status}`);
+        return 0;
+      }
+      const id = need(rest[0], "message id");
+      const m = action === "release" ? await c.call("messages.release", { id }) : action === "reject" ? await c.call("messages.reject", { id }) : undefined;
+      if (!m) throw new Error(`Unknown message action: ${action}`);
+      out(m, () => `${m.id}: ${m.status}`);
+      return 0;
+    }
+    case "decisions": {
+      const list = await c.call("decisions.list");
+      out(list, () => (list.length ? list.map((d) => `  ${d.id.padEnd(5)} [${d.status}] ${d.title}: ${d.decision}${d.author !== "human" ? `  (by ${d.author})` : ""}`).join("\n") : "no decisions"));
+      return 0;
+    }
+    case "decision": {
+      const action = need(sub, "decision action");
+      if (action === "add") {
+        const d = await c.call("decisions.add", {
+          title: need(rest.join(" "), "title"),
+          decision: need(v.decision as string | undefined, "--decision"),
+          rationale: v.rationale as string | undefined,
+          tags: typeof v.tags === "string" ? v.tags.split(",") : undefined,
+        });
+        out(d, () => `${d.id}: ${d.status}`);
+        return 0;
+      }
+      const status = { accept: "accepted", reject: "rejected", supersede: "superseded" }[action] as "accepted" | undefined;
+      if (!status) throw new Error(`Unknown decision action: ${action}`);
+      const d = await c.call("decisions.resolve", { id: need(rest[0], "decision id"), status });
+      out(d, () => `${d.id}: ${d.status}`);
+      return 0;
+    }
+    case "policy": {
+      const id = need(sub, "agent id");
+      if (typeof v.try === "string") {
+        const r = await c.call("policy.evaluate", { agentId: id, query: { toolKind: "execute", command: v.try } });
+        out(r, () => `${r.decision} (${r.rule})`);
+        return 0;
+      }
+      if (typeof v.set === "string") {
+        const a = await c.call("agents.setPolicy", { id, policy: JSON.parse(v.set) });
+        out(a.policy, () => JSON.stringify(a.policy, null, 2));
+        return 0;
+      }
+      const a = (await c.call("agents.list")).find((x) => x.id === id);
+      if (!a) throw new Error(`No agent "${id}"`);
+      out(a.policy, () => JSON.stringify(a.policy, null, 2));
+      return 0;
+    }
+    case "audit": {
+      const list = await c.call("audit.list", { agentId: v.agent as string | undefined, limit: v.limit ? Number(v.limit) : undefined });
+      out(list, () =>
+        list.length
+          ? list.map((e) => `  ${e.at.slice(11, 19)} ${e.agentId.padEnd(8)} ${e.outcome.padEnd(11)} by ${e.by.padEnd(6)} ${e.risky ? "RISKY " : ""}${e.command ?? e.path ?? e.title}${e.rule ? `  (${e.rule})` : ""}`).join("\n")
+          : "audit log is empty",
+      );
+      return 0;
+    }
+    case "telemetry": {
+      const action = sub ?? "status";
+      if (action === "preview") {
+        const events = await c.call("telemetry.preview");
+        out(events, () => (events.length ? JSON.stringify(events, null, 2) : "nothing queued"));
+        return 0;
+      }
+      const s =
+        action === "enable"
+          ? await c.call("telemetry.setEnabled", { enabled: true, endpoint: v.endpoint as string | undefined })
+          : action === "disable"
+            ? await c.call("telemetry.setEnabled", { enabled: false })
+            : await c.call("telemetry.status");
+      out(s, () => `telemetry ${s.enabled ? "on" : "off"}; endpoint ${s.endpoint || "(none: kept local)"}; queued ${s.queued}, sent ${s.sent}; crash reports ${s.crashReports}; settings ${s.file}`);
+      return 0;
+    }
     case "merge": {
       const r = await c.call("review.merge", { id: need(sub, "review id"), resetAgents: !!v["reset-agents"], force: !!v.force });
       out(r, () => `${r.id}: ${r.status} into ${r.baseRef} at ${r.integrationCommit?.slice(0, 10)}`);
@@ -301,6 +461,17 @@ function renderBoard(agents: AgentState[], conflicts: Conflict[], approvals: App
   lines.push("", `CONFLICTS (${conflicts.length})`);
   if (conflicts.length) lines.push(renderConflicts(conflicts));
   return lines.join("\n");
+}
+
+function renderTasks(list: Task[]): string {
+  if (!list.length) return "no tasks";
+  return list
+    .map((t) => {
+      const deps = t.dependsOn.length ? ` after ${t.dependsOn.join(",")}` : "";
+      const flags = [t.blocked ? "blocked" : "", t.autoStart ? "auto" : "", t.outOfScope?.length ? `out of scope: ${t.outOfScope.join(",")}` : ""].filter(Boolean).join("; ");
+      return `  ${t.id.padEnd(5)} ${t.status.padEnd(11)} ${(t.agentId ?? "-").padEnd(10)} ${t.title}${deps}${flags ? `  [${flags}]` : ""}`;
+    })
+    .join("\n");
 }
 
 function renderConflicts(list: Conflict[]): string {

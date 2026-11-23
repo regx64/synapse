@@ -94,3 +94,28 @@ textarea {
 .sev-info { background: var(--vscode-inputValidation-infoBackground); border: 1px solid var(--vscode-inputValidation-infoBorder); }
 .pill { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.8; }
 pre.detail { font-size: 11px; max-height: 10em; overflow: auto; margin: 0; background: var(--vscode-textCodeBlock-background); padding: 4px; }
+
+.tabs { display: flex; gap: 2px; margin: 12px 0 4px; border-bottom: 1px solid var(--vscode-panel-border, transparent); flex-wrap: wrap; }
+.tab { background: none; color: var(--vscode-descriptionForeground); border-bottom: 2px solid transparent; border-radius: 0; padding: 4px 8px; }
+.tab:hover { background: none; color: var(--vscode-foreground); }
+.tab.active { color: var(--vscode-foreground); border-bottom-color: var(--vscode-focusBorder); }
+.form input, .form select, .form textarea, input, select {
+  font: inherit;
+  color: var(--vscode-input-foreground);
+  background: var(--vscode-input-background);
+  border: 1px solid var(--vscode-input-border, transparent);
+  padding: 3px 4px;
+}
+.form input:not([type=checkbox]), .form textarea, .form select[multiple] { width: 100%; box-sizing: border-box; }
+.form summary { cursor: pointer; font-weight: 600; }
+.ts-in_progress { background: var(--vscode-charts-blue, #3794ff); color: #fff; }
+.ts-review { background: var(--vscode-charts-orange, #d18616); color: #fff; }
+.ts-done { background: var(--vscode-charts-green, #388a34); color: #fff; }
+.ts-failed { background: var(--vscode-errorForeground); color: #fff; }
+.msg-held { outline: 1px solid var(--vscode-inputValidation-warningBorder); }
+.msg-rejected, .dec-rejected, .dec-superseded { opacity: 0.6; }
+.dec-proposed { outline: 1px dashed var(--vscode-focusBorder); }
+.audit { display: flex; gap: 6px; align-items: baseline; padding: 2px 0; flex-wrap: wrap; border-bottom: 1px solid var(--vscode-panel-border, transparent); }
+.audit.risky { background: var(--vscode-inputValidation-warningBackground); }
+.out-denied { color: var(--vscode-errorForeground); }
+.out-ran-unasked { color: var(--vscode-charts-orange, #d18616); }

@@ -55,6 +55,14 @@ export interface AcpPermissionRequest {
 export type AcpPermissionOutcome = { outcome: "selected"; optionId: string } | { outcome: "cancelled" };
 
 /** Requests the agent makes of Synapse. */
+/** An MCP server the agent should start (ACP McpServerStdio). */
+export interface AcpMcpServerStdio {
+  name: string;
+  command: string;
+  args: string[];
+  env: { name: string; value: string }[];
+}
+
 export interface AcpClientHandlers {
   readTextFile(params: { sessionId: string; path: string; line?: number; limit?: number }): Promise<{ content: string }>;
   writeTextFile(params: { sessionId: string; path: string; content: string }): Promise<null>;
@@ -96,7 +104,7 @@ export class AcpAgentProcess extends EventEmitter {
     return !!this.child && this.child.exitCode === null && this.child.signalCode === null;
   }
 
-  async start(): Promise<{ sessionId: string; init: InitializeResult }> {
+  async start(mcpServers: AcpMcpServerStdio[] = []): Promise<{ sessionId: string; init: InitializeResult }> {
     const child = spawn(this.opts.command, this.opts.args, {
       cwd: this.opts.cwd,
       env: { ...process.env, ...this.opts.env },
@@ -145,7 +153,7 @@ export class AcpAgentProcess extends EventEmitter {
 
     let session: { sessionId: string };
     try {
-      session = await peer.request<{ sessionId: string }>("session/new", { cwd: this.opts.cwd, mcpServers: [] }, { timeoutMs: 120_000 });
+      session = await peer.request<{ sessionId: string }>("session/new", { cwd: this.opts.cwd, mcpServers }, { timeoutMs: 120_000 });
     } catch (err) {
       if (err instanceof RpcError && err.code === ErrorCodes.AuthRequired) {
         const methods = (init.authMethods ?? []).map((m) => m.name).join(", ");

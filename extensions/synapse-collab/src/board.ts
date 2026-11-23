@@ -8,7 +8,14 @@ type BoardMessage =
   | { type: "command"; command: string; args?: unknown[] }
   | { type: "prompt"; id: string; text: string }
   | { type: "approve"; id: string; optionId: string }
-  | { type: "openFile"; path: string; agentId?: string; line?: number };
+  | { type: "openFile"; path: string; agentId?: string; line?: number }
+  | { type: "createTask"; title: string; description?: string; agentId?: string; dependsOn?: string[]; scope?: string[]; autoStart?: boolean }
+  | { type: "taskAction"; id: string; action: "start" | "done" | "failed" | "todo" | "remove" }
+  | { type: "sendMessage"; to: string; kind: "note"; subject: string; body?: string }
+  | { type: "messageAction"; id: string; action: "release" | "reject" }
+  | { type: "addDecision"; title: string; decision: string; rationale?: string }
+  | { type: "decisionAction"; id: string; status: "accepted" | "rejected" | "superseded" }
+  | { type: "editPolicy"; agentId: string };
 
 /** The collaboration board: status, ownership and pending approvals of every agent. */
 export class BoardProvider implements vscode.WebviewViewProvider, vscode.Disposable {
@@ -66,6 +73,31 @@ export class BoardProvider implements vscode.WebviewViewProvider, vscode.Disposa
           return;
         case "approve":
           await this.conn.call("approvals.resolve", { id: m.id, optionId: m.optionId });
+          return;
+        case "createTask": {
+          const { type: _t, ...p } = m;
+          await this.conn.call("tasks.create", p);
+          return;
+        }
+        case "taskAction":
+          if (m.action === "remove") await this.conn.call("tasks.remove", { id: m.id });
+          else if (m.action === "start") await this.conn.call("tasks.start", { id: m.id });
+          else await this.conn.call("tasks.setStatus", { id: m.id, status: m.action });
+          return;
+        case "sendMessage":
+          await this.conn.call("messages.send", { to: m.to, kind: m.kind, subject: m.subject, body: m.body });
+          return;
+        case "messageAction":
+          await this.conn.call(m.action === "release" ? "messages.release" : "messages.reject", { id: m.id });
+          return;
+        case "addDecision":
+          await this.conn.call("decisions.add", { title: m.title, decision: m.decision, rationale: m.rationale || undefined });
+          return;
+        case "decisionAction":
+          await this.conn.call("decisions.resolve", { id: m.id, status: m.status });
+          return;
+        case "editPolicy":
+          await vscode.commands.executeCommand("synapse.editPolicy", m.agentId);
           return;
         case "openFile": {
           const agent = m.agentId ? this.conn.state?.agents.find((a) => a.id === m.agentId) : undefined;

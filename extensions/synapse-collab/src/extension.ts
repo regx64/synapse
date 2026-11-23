@@ -4,6 +4,7 @@ import type { AgentState } from "@synapse/client";
 import { BoardProvider } from "./board.js";
 import { CoreConnection } from "./connection.js";
 import { Markers } from "./markers.js";
+import { POLICY_SCHEME, PolicyFileSystem } from "./policy.js";
 import { REVIEW_SCHEME, ReviewContentProvider, ReviewPanel } from "./review.js";
 
 /**
@@ -29,6 +30,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     status,
     vscode.window.registerWebviewViewProvider(BoardProvider.viewId, board, { webviewOptions: { retainContextWhenHidden: true } }),
     vscode.workspace.registerTextDocumentContentProvider(REVIEW_SCHEME, new ReviewContentProvider(conn)),
+    vscode.workspace.registerFileSystemProvider(POLICY_SCHEME, new PolicyFileSystem(conn), { isCaseSensitive: true }),
     conn.onState((s) => {
       if (!s) {
         status.text = "$(circle-slash) Synapse";
@@ -37,13 +39,25 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         const working = s.agents.filter((a) => a.status === "working").length;
         const waiting = s.approvals.filter((a) => a.status === "pending").length;
         const conflicts = s.conflicts.filter((c) => c.severity !== "info").length;
-        status.text = `$(organization) ${s.agents.length} agents${working ? ` · ${working} working` : ""}${waiting ? ` · $(bell) ${waiting}` : ""}${conflicts ? ` · $(warning) ${conflicts}` : ""}`;
+        const held = s.messages.filter((m) => m.status === "held").length;
+        const review = s.tasks.filter((t) => t.status === "review").length;
+        status.text = `$(organization) ${s.agents.length} agents${working ? ` · ${working} working` : ""}${waiting ? ` · $(bell) ${waiting}` : ""}${review ? ` · $(tasklist) ${review}` : ""}${held ? ` · $(mail) ${held}` : ""}${conflicts ? ` · $(warning) ${conflicts}` : ""}`;
         status.tooltip = `Synapse — base ${s.baseRef}`;
         status.backgroundColor = conflicts ? new vscode.ThemeColor("statusBarItem.warningBackground") : undefined;
       }
       status.show();
     }),
     conn.onEvent((ev) => {
+      if (ev.type === "core.log") {
+        const d = ev.data as { level?: string; message?: string };
+        if (d.level === "warning" && d.message) void vscode.window.showWarningMessage(`Synapse: ${d.message}`, "Open audit");
+        return;
+      }
+      if (ev.type === "message.updated") {
+        const m = ev.data as { status: string; from: string; subject: string };
+        if (m.status === "held") void vscode.window.showWarningMessage(`Synapse held a message from ${m.from}: "${m.subject}". Review it on the board.`);
+        return;
+      }
       if (ev.type === "approval.requested") {
         const ap = ev.data as { agentId: string; title: string };
         const name = conn.state?.agents.find((a) => a.id === ap.agentId)?.name ?? ap.agentId;
@@ -151,11 +165,61 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       { label: "$(debug-restart) Restart", command: "synapse.restartAgent" },
       { label: "$(folder-opened) Open worktree in new window", command: "synapse.openWorktree" },
       { label: "$(output) Show output", command: "synapse.showOutput" },
+      { label: "$(shield) Edit permission policy", command: "synapse.editPolicy" },
       { label: "$(discard) Reset worktree to base", command: "synapse.resetAgent" },
       { label: "$(trash) Remove agent", command: "synapse.removeAgent" },
     ];
     const pick = await vscode.window.showQuickPick(items, { placeHolder: a });
     if (pick) await vscode.commands.executeCommand(pick.command, a);
+  });
+  register("synapse.editPolicy", async (id) => {
+    const a = await pickAgent(id);
+    if (!a) return;
+    const doc = await vscode.workspace.openTextDocument(PolicyFileSystem.uri(a));
+    await vscode.languages.setTextDocumentLanguage(doc, "jsonc");
+    await vscode.window.showTextDocument(doc);
+  });
+  register("synapse.newTask", async () => {
+    const title = await vscode.window.showInputBox({ prompt: "Task title" });
+    if (!title) return;
+    const agent = await pickAgent(undefined);
+    const t = await conn.call("tasks.create", { title, agentId: agent });
+    void vscode.window.showInformationMessage(`Synapse: created ${t.id}. Add details and dependencies on the board's Tasks tab.`);
+  });
+  register("synapse.telemetry", async () => {
+    const s = await conn.call("telemetry.status");
+    const pick = await vscode.window.showQuickPick(
+      [
+        s.enabled
+          ? { label: "$(circle-slash) Turn telemetry off", action: "off" }
+          : { label: "$(check) Turn telemetry on", description: "anonymous counts only: no code, paths, prompts or messages", action: "on" },
+        { label: "$(eye) Show exactly what would be sent", action: "preview" },
+      ],
+      { placeHolder: `Telemetry is ${s.enabled ? "on" : "off"}${s.endpoint ? ` (sends to ${s.endpoint})` : " (no endpoint: kept on this machine)"}. ${s.crashReports} crash report(s) stored locally.` },
+    );
+    if (!pick) return;
+    if (pick.action === "preview") {
+      const doc = await vscode.workspace.openTextDocument({ language: "json", content: JSON.stringify(await conn.call("telemetry.preview"), null, 2) });
+      await vscode.window.showTextDocument(doc);
+      return;
+    }
+    const next = await conn.call("telemetry.setEnabled", { enabled: pick.action === "on" });
+    void vscode.window.showInformationMessage(`Synapse: telemetry ${next.enabled ? "on" : "off"}.`);
+  });
+  register("synapse.initConfig", async () => {
+    const uri = vscode.Uri.joinPath(vscode.Uri.file(repoRoot), "synapse.config.json");
+    try {
+      await vscode.workspace.fs.stat(uri);
+    } catch {
+      const template = {
+        testCommand: "npm test",
+        setupCommand: "npm ci",
+        decisionLogPath: "docs/decisions.md",
+        policy: { network: "ask", commands: { allow: ["npm test*", "npm run lint*", "git status*", "git diff*"] } },
+      };
+      await vscode.workspace.fs.writeFile(uri, Buffer.from(JSON.stringify(template, null, 2) + "\n"));
+    }
+    await vscode.window.showTextDocument(uri);
   });
   register("synapse.resetAgent", async (id) => {
     const a = await pickAgent(id);
@@ -185,6 +249,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     );
     ReviewPanel.show(conn, review);
   });
+
+  // Onboarding (phase 4): the walkthrough opens once per repository.
+  const seenKey = `synapse.walkthroughShown:${repoRoot}`;
+  if (vscode.workspace.getConfiguration("synapse").get<boolean>("showWalkthroughOnStart", true) && !context.globalState.get(seenKey)) {
+    void context.globalState.update(seenKey, true);
+    void vscode.commands.executeCommand("workbench.action.openWalkthrough", `${context.extension.id}#synapse.gettingStarted`, false);
+  }
 
   if (vscode.workspace.getConfiguration("synapse").get<boolean>("autoStartCore", true)) {
     conn.connect(true).catch((err: Error) => {

@@ -3,10 +3,14 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import type {
   AgentConfig,
+  AgentMessage,
   AgentOwnership,
   AgentState,
   Approval,
+  AuditEntry,
   Conflict,
+  Decision,
+  Task,
   CoreEvent,
   CoreEventType,
   CoreState,
@@ -19,10 +23,17 @@ const BACKLOG_LIMIT = 2000;
 
 interface PersistedState {
   version: number;
-  agents: (Omit<AgentState, "status" | "sessionId" | "error"> & { command: string; args: string[] })[];
+  agents: (Omit<AgentState, "status" | "sessionId" | "error" | "currentTaskId" | "policy"> & { command: string; args: string[]; policy?: AgentState["policy"] })[];
   reviews: Review[];
   conflicts: Conflict[];
+  tasks?: Task[];
+  messages?: AgentMessage[];
+  decisions?: Decision[];
+  audit?: AuditEntry[];
 }
+
+const MESSAGE_LIMIT = 500;
+const AUDIT_LIMIT = 1000;
 
 /**
  * The single source of truth for collaboration state (risk T4). All
@@ -37,6 +48,10 @@ export class StateStore extends EventEmitter {
   private conflicts: Conflict[] = [];
   private readonly approvals = new Map<string, Approval>();
   private readonly reviews = new Map<string, Review>();
+  private readonly tasks = new Map<string, Task>();
+  private readonly messages = new Map<string, AgentMessage>();
+  private readonly decisions = new Map<string, Decision>();
+  private audit: AuditEntry[] = [];
   private readonly backlog: CoreEvent[] = [];
   private readonly persistSoon = debounce(() => this.persistNow(), 200);
 
@@ -44,6 +59,9 @@ export class StateStore extends EventEmitter {
     public readonly repoRoot: string,
     public baseRef: string,
     private readonly stateFile?: string,
+    private readonly defaultPolicy: () => AgentState["policy"] = () => {
+      throw new Error("no default policy");
+    },
   ) {
     super();
     this.setMaxListeners(100);
@@ -78,6 +96,10 @@ export class StateStore extends EventEmitter {
       conflicts: this.conflicts,
       approvals: [...this.approvals.values()],
       reviews: [...this.reviews.values()],
+      tasks: this.listTasks(),
+      messages: this.listMessages(),
+      decisions: this.listDecisions(),
+      audit: this.audit.slice(-200),
       seq: this.seq,
     };
   }
@@ -202,25 +224,104 @@ export class StateStore extends EventEmitter {
   }
 
   // -------------------------------------------------------------------------
+  // Tasks, messages, decisions, audit (phase 3)
+
+  listTasks(): Task[] {
+    return [...this.tasks.values()];
+  }
+
+  getTask(id: string): Task | undefined {
+    return this.tasks.get(id);
+  }
+
+  putTask(t: Task): Task {
+    t.updatedAt = nowIso();
+    this.tasks.set(t.id, t);
+    this.emitEvent("task.updated", t);
+    this.persistSoon();
+    return t;
+  }
+
+  removeTask(id: string): void {
+    if (!this.tasks.delete(id)) return;
+    this.emitEvent("task.removed", { id });
+    this.persistSoon();
+  }
+
+  listMessages(): AgentMessage[] {
+    return [...this.messages.values()];
+  }
+
+  getMessage(id: string): AgentMessage | undefined {
+    return this.messages.get(id);
+  }
+
+  putMessage(m: AgentMessage): AgentMessage {
+    this.messages.set(m.id, m);
+    if (this.messages.size > MESSAGE_LIMIT) {
+      const old = [...this.messages.values()].filter((x) => x.status === "delivered" || x.status === "rejected");
+      for (const x of old.slice(0, this.messages.size - MESSAGE_LIMIT)) this.messages.delete(x.id);
+    }
+    this.emitEvent("message.updated", m);
+    this.persistSoon();
+    return m;
+  }
+
+  listDecisions(): Decision[] {
+    return [...this.decisions.values()];
+  }
+
+  getDecision(id: string): Decision | undefined {
+    return this.decisions.get(id);
+  }
+
+  putDecision(d: Decision): Decision {
+    this.decisions.set(d.id, d);
+    this.emitEvent("decision.updated", d);
+    this.persistSoon();
+    return d;
+  }
+
+  addAudit(e: AuditEntry): void {
+    this.audit.push(e);
+    if (this.audit.length > AUDIT_LIMIT) this.audit.splice(0, this.audit.length - AUDIT_LIMIT);
+    this.emitEvent("audit.added", e);
+    this.persistSoon();
+  }
+
+  listAudit(agentId?: string, limit = 200): AuditEntry[] {
+    const list = agentId ? this.audit.filter((a) => a.agentId === agentId) : this.audit;
+    return list.slice(-limit);
+  }
+
+  // -------------------------------------------------------------------------
   // Persistence. Agent env values are deliberately not persisted (risk C4).
 
   load(): void {
     if (!this.stateFile || !fs.existsSync(this.stateFile)) return;
     const data = JSON.parse(fs.readFileSync(this.stateFile, "utf8")) as PersistedState;
     for (const a of data.agents ?? []) {
-      this.agents.set(a.id, { ...a, status: "stopped", toolCalls: a.toolCalls ?? [] });
+      this.agents.set(a.id, { ...a, status: "stopped", toolCalls: a.toolCalls ?? [], policy: a.policy ?? this.defaultPolicy() });
     }
     for (const r of data.reviews ?? []) this.reviews.set(r.id, r);
     this.conflicts = data.conflicts ?? [];
+    for (const t of data.tasks ?? []) this.tasks.set(t.id, t.status === "in_progress" ? { ...t, status: "todo" } : t);
+    for (const m of data.messages ?? []) this.messages.set(m.id, m);
+    for (const d of data.decisions ?? []) this.decisions.set(d.id, d);
+    this.audit = data.audit ?? [];
   }
 
   persistNow(): void {
     if (!this.stateFile) return;
     const data: PersistedState = {
       version: 1,
-      agents: [...this.agents.values()].map(({ status: _s, sessionId: _sid, error: _e, ...rest }) => rest),
+      agents: [...this.agents.values()].map(({ status: _s, sessionId: _sid, error: _e, currentTaskId: _t, ...rest }) => rest),
       reviews: [...this.reviews.values()].slice(-50),
       conflicts: this.conflicts,
+      tasks: this.listTasks(),
+      messages: this.listMessages(),
+      decisions: this.listDecisions(),
+      audit: this.audit.slice(-500),
     };
     fs.mkdirSync(path.dirname(this.stateFile), { recursive: true });
     const tmp = `${this.stateFile}.tmp`;

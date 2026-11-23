@@ -51,6 +51,23 @@ exports.run = async function run() {
     const commands = await vscode.commands.getCommands(true);
     for (const c of ["synapse.addAgent", "synapse.prepareReview", "synapse.checkConflicts", "synapse.agentMenu"]) assert.ok(commands.includes(c), c);
     await vscode.commands.executeCommand("synapse.checkConflicts");
+
+    // Phase 3: an agent's policy opens as a JSON document; saving applies it through the core.
+    const policyUri = vscode.Uri.parse("synapse-policy:/alpha.json");
+    const policyDoc = await vscode.workspace.openTextDocument(policyUri);
+    const policy = JSON.parse(policyDoc.getText());
+    assert.deepEqual(policy.writable, ["**"]);
+    policy.network = "deny";
+    const edit = new vscode.WorkspaceEdit();
+    edit.replace(policyUri, new vscode.Range(0, 0, policyDoc.lineCount, 0), JSON.stringify(policy, null, 2));
+    await vscode.workspace.applyEdit(edit);
+    assert.ok(await policyDoc.save(), "policy saved");
+    const alpha = (await client.call("agents.list")).find((a) => a.id === "alpha");
+    assert.equal(alpha.policy.network, "deny");
+
+    // Phase 3: tasks created through the core show up for the extension's commands.
+    await client.call("tasks.create", { title: "Smoke task", agentId: "beta" });
+    for (const c of ["synapse.editPolicy", "synapse.newTask", "synapse.telemetry", "synapse.initConfig"]) assert.ok(commands.includes(c), c);
   } finally {
     await client.call("core.shutdown").catch(() => {});
     client.close();
