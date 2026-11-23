@@ -33,7 +33,9 @@ async function main(): Promise<void> {
   };
 
   const core = await SynapseCore.open({ workspace: path.resolve(values.workspace ?? process.cwd()), baseRef: values.base, log });
+  fs.mkdirSync(path.join(core.repoRoot, ".synapse"), { recursive: true });
   logStream = fs.createWriteStream(path.join(core.repoRoot, ".synapse", "core.log"), { flags: "a" });
+  logStream.on("error", () => (logStream = undefined));
   const server = await serve(core, { socket: values.socket });
   process.stdout.write(JSON.stringify({ ready: true, socket: server.socket, repoRoot: core.repoRoot, pid: process.pid }) + "\n");
 

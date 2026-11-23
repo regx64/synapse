@@ -1,1 +1,182 @@
-{ "name": "synapse-collab", "version": "0.1.0", "private": true, "scripts": { "build": "echo pending" } }
+{
+  "name": "synapse-collab",
+  "displayName": "Synapse Collaboration",
+  "description": "Collaboration board, ownership markers, conflict warnings and combined review for several AI agents. A thin client of synapse-core.",
+  "version": "0.1.0",
+  "publisher": "synapse",
+  "license": "MIT",
+  "private": true,
+  "engines": {
+    "vscode": "^1.95.0"
+  },
+  "categories": [
+    "AI",
+    "Other"
+  ],
+  "main": "./dist/extension.cjs",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "synapse",
+          "title": "Synapse",
+          "icon": "media/synapse.svg"
+        }
+      ]
+    },
+    "views": {
+      "synapse": [
+        {
+          "type": "webview",
+          "id": "synapse.board",
+          "name": "Board"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "synapse.startCore",
+        "title": "Start Core",
+        "category": "Synapse"
+      },
+      {
+        "command": "synapse.stopCore",
+        "title": "Stop Core",
+        "category": "Synapse"
+      },
+      {
+        "command": "synapse.addAgent",
+        "title": "Add Agent\u2026",
+        "category": "Synapse",
+        "icon": "$(add)"
+      },
+      {
+        "command": "synapse.startAgent",
+        "title": "Start Agent",
+        "category": "Synapse"
+      },
+      {
+        "command": "synapse.stopAgent",
+        "title": "Stop Agent",
+        "category": "Synapse"
+      },
+      {
+        "command": "synapse.restartAgent",
+        "title": "Restart Agent",
+        "category": "Synapse"
+      },
+      {
+        "command": "synapse.removeAgent",
+        "title": "Remove Agent",
+        "category": "Synapse"
+      },
+      {
+        "command": "synapse.promptAgent",
+        "title": "Send Prompt to Agent\u2026",
+        "category": "Synapse"
+      },
+      {
+        "command": "synapse.cancelAgent",
+        "title": "Cancel Agent Turn",
+        "category": "Synapse"
+      },
+      {
+        "command": "synapse.openWorktree",
+        "title": "Open Agent Worktree in New Window",
+        "category": "Synapse"
+      },
+      {
+        "command": "synapse.checkConflicts",
+        "title": "Check Conflicts Now",
+        "category": "Synapse",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "synapse.prepareReview",
+        "title": "Combined Review\u2026",
+        "category": "Synapse",
+        "icon": "$(git-merge)"
+      },
+      {
+        "command": "synapse.showOutput",
+        "title": "Show Agent Output",
+        "category": "Synapse"
+      },
+      {
+        "command": "synapse.resetAgent",
+        "title": "Reset Agent Worktree to Base",
+        "category": "Synapse"
+      },
+      {
+        "command": "synapse.agentMenu",
+        "title": "Agent Actions\u2026",
+        "category": "Synapse"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "synapse.addAgent",
+          "when": "view == synapse.board",
+          "group": "navigation@1"
+        },
+        {
+          "command": "synapse.checkConflicts",
+          "when": "view == synapse.board",
+          "group": "navigation@2"
+        },
+        {
+          "command": "synapse.prepareReview",
+          "when": "view == synapse.board",
+          "group": "navigation@3"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "synapse.agentMenu",
+          "when": "false"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Synapse",
+      "properties": {
+        "synapse.autoStartCore": {
+          "type": "boolean",
+          "default": true,
+          "description": "Start synapse-core automatically when a git repository is open."
+        },
+        "synapse.corePath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to synapse-core's main script. Empty: use the core bundled with this extension."
+        },
+        "synapse.nodePath": {
+          "type": "string",
+          "default": "",
+          "description": "Node.js binary used to run synapse-core. Empty: the editor's own runtime."
+        },
+        "synapse.showInlineOwners": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show which agent is changing a symbol at the end of its first line."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "node esbuild.mjs",
+    "typecheck": "tsc --noEmit -p .",
+    "package": "node esbuild.mjs && vsce package --no-dependencies"
+  },
+  "devDependencies": {
+    "@synapse/client": "0.1.0",
+    "@synapse/core": "0.1.0",
+    "@synapse/mock-agent": "0.1.0",
+    "@types/vscode": "1.95.0",
+    "esbuild": "0.25.12"
+  }
+}

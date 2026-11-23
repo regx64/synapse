@@ -1,5 +1,7 @@
+import * as fs from "node:fs";
 import { createRequire } from "node:module";
 import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 import type { PresetInfo } from "@synapse/protocol";
 import type { SynapseConfig } from "./config.js";
 
@@ -38,21 +40,29 @@ const BUILTIN: PresetInfo[] = [
   },
 ];
 
-function mockPreset(): PresetInfo | undefined {
+function mockAgentMain(): string | undefined {
+  // Bundled next to the core (IDE build).
+  const bundled = path.join(path.dirname(fileURLToPath(import.meta.url)), "mock-agent.mjs");
+  if (fs.existsSync(bundled)) return bundled;
   try {
-    const require = createRequire(import.meta.url);
-    const pkg = require.resolve("@synapse/mock-agent/package.json");
-    return {
-      id: "mock",
-      name: "Mock",
-      command: process.execPath,
-      args: [path.join(path.dirname(pkg), "dist", "src", "main.js")],
-      color: "#a855f7",
-      notes: "Scripted ACP agent for tests and demos. Replays steps; never calls a model.",
-    };
+    const pkg = createRequire(import.meta.url).resolve("@synapse/mock-agent/package.json");
+    return path.join(path.dirname(pkg), "dist", "src", "main.js");
   } catch {
     return undefined;
   }
+}
+
+function mockPreset(): PresetInfo | undefined {
+  const main = mockAgentMain();
+  if (!main) return undefined;
+  return {
+    id: "mock",
+    name: "Mock",
+    command: process.execPath,
+    args: [main],
+    color: "#a855f7",
+    notes: "Scripted ACP agent for tests and demos. Replays steps; never calls a model.",
+  };
 }
 
 export function listPresets(config: SynapseConfig): PresetInfo[] {

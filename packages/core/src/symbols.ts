@@ -1,6 +1,8 @@
 import { createRequire } from "node:module";
 import { createHash } from "node:crypto";
+import * as fs from "node:fs";
 import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 import type { Range, SymbolKind } from "@synapse/protocol";
 import { Language, Parser, type Node as TsNode } from "web-tree-sitter";
 
@@ -274,15 +276,27 @@ const require = createRequire(import.meta.url);
 let initPromise: Promise<void> | undefined;
 const languages = new Map<LangId, Promise<Language>>();
 
+/**
+ * Directory holding tree-sitter.wasm and the grammar files when the core is
+ * shipped as a bundle (see extensions/synapse-collab/esbuild.mjs): a `wasm`
+ * folder next to the bundle, or SYNAPSE_WASM_DIR.
+ */
+function bundledWasmDir(): string | undefined {
+  if (process.env.SYNAPSE_WASM_DIR) return process.env.SYNAPSE_WASM_DIR;
+  const dir = path.join(path.dirname(fileURLToPath(import.meta.url)), "wasm");
+  return fs.existsSync(path.join(dir, "tree-sitter.wasm")) ? dir : undefined;
+}
+
 function grammarPath(lang: LangId): string {
   const file = `tree-sitter-${lang}.wasm`;
-  const dir = process.env.SYNAPSE_GRAMMARS_DIR;
+  const dir = bundledWasmDir();
   if (dir) return path.join(dir, file);
   return require.resolve(`tree-sitter-wasms/out/${file}`);
 }
 
 async function getLanguage(lang: LangId): Promise<Language> {
-  if (!initPromise) initPromise = Parser.init();
+  const dir = bundledWasmDir();
+  if (!initPromise) initPromise = dir ? Parser.init({ locateFile: (f: string) => path.join(dir, f) }) : Parser.init();
   await initPromise;
   let p = languages.get(lang);
   if (!p) {
