@@ -90,10 +90,8 @@ function sha256(file) {
 /** Unzips with the OS's own tool (a .vsix is a zip). */
 function unzip(zip, dest) {
   if (process.platform === "win32") {
-    // Expand-Archive only takes .zip names.
-    const copy = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "synapse-zip-")), "pack.zip");
-    fs.copyFileSync(zip, copy);
-    execFileSync("powershell", ["-NoProfile", "-Command", `Expand-Archive -LiteralPath '${copy}' -DestinationPath '${dest}' -Force`], { stdio: "inherit" });
+    // Windows' own tar (bsdtar) reads zip files; Expand-Archive fails on some runners.
+    execFileSync("tar", ["-xf", zip, "-C", dest], { stdio: "inherit" });
   } else {
     execFileSync("unzip", ["-q", "-o", zip, "-d", dest], { stdio: "inherit" });
   }
