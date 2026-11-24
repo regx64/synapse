@@ -214,11 +214,20 @@ export class AgentManager {
     this.runTurn(id, proc, full);
   }
 
+  /** Turns taking their checkpoint, and those cancelled meanwhile. */
+  private readonly startingTurns = new Set<string>();
+  private readonly cancelledBeforeStart = new Set<string>();
+
   private runTurn(id: string, proc: AcpAgentProcess, text: string): void {
     // A checkpoint first, so the person can rewind the agent to before this turn.
+    this.startingTurns.add(id);
     this.checkpoint(id)
       .catch((err: Error) => this.deps.log(`checkpoint for ${id} failed: ${err.message}`))
-      .then(() => proc.prompt(text))
+      .then(() => {
+        this.startingTurns.delete(id);
+        if (this.cancelledBeforeStart.delete(id)) return "cancelled";
+        return proc.prompt(text);
+      })
       .then(
         (stopReason) => this.endTurn(id, proc, stopReason),
         (err: Error) => this.endTurn(id, proc, "error", err.message),
@@ -350,6 +359,8 @@ export class AgentManager {
   cancel(id: string, keepGuidance = false): void {
     const agent = this.require(id);
     if (!keepGuidance && agent.guidance?.length) this.store.updateAgent(id, { guidance: undefined });
+    // A turn still taking its checkpoint has not reached the agent: stop it there.
+    if (this.startingTurns.has(id)) this.cancelledBeforeStart.add(id);
     this.procs.get(id)?.cancel();
     this.cancelPermissions(id);
   }
