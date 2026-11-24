@@ -442,6 +442,65 @@ export interface DecisionAnchor extends DecisionPin {
 }
 
 // ---------------------------------------------------------------------------
+// Live diffs and comments on an agent's changes
+
+export interface DiffLine {
+  t: "+" | "-" | " ";
+  text: string;
+  /** 1-based line numbers in the base and agent versions. */
+  oldNo?: number;
+  newNo?: number;
+}
+
+export interface DiffHunk {
+  header: string;
+  oldStart: number;
+  oldLines: number;
+  newStart: number;
+  newLines: number;
+  lines: DiffLine[];
+}
+
+export interface FileDiff {
+  path: string;
+  status: "added" | "modified" | "deleted";
+  binary: boolean;
+  hunks: DiffHunk[];
+  /** The diff was cut short (very large file or change). */
+  truncated?: boolean;
+}
+
+/** What an agent has changed against its base, as of its latest snapshot. */
+export interface AgentDiff {
+  agentId: string;
+  baseCommit: string;
+  snapshot?: string;
+  files: FileDiff[];
+  updatedAt: string;
+}
+
+/** A comment by the person on lines of an agent's changes. */
+export interface CodeComment {
+  id: string;
+  agentId: string;
+  path: string;
+  /** 1-based lines in the agent's version of the file, where the quoted code was last found. */
+  line: number;
+  endLine: number;
+  /** The commented code, used to follow it as the agent keeps editing. */
+  quote: string;
+  text: string;
+  /** "note": kept for the person; "guidance": given to the agent; "task": turned into a task. */
+  action: "note" | "guidance" | "task";
+  taskId?: string;
+  status: "open" | "resolved";
+  /** The quoted code is no longer in the agent's version of the file. */
+  outdated?: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ---------------------------------------------------------------------------
 // State and events
 
 export interface CoreState {
@@ -456,6 +515,7 @@ export interface CoreState {
   tasks: Task[];
   messages: AgentMessage[];
   decisions: Decision[];
+  comments: CodeComment[];
   /** The most recent audit entries. */
   audit: AuditEntry[];
   seq: number;
@@ -475,6 +535,7 @@ export type CoreEventType =
   | "task.removed"
   | "message.updated"
   | "decision.updated"
+  | "comment.updated"
   | "audit.added"
   | "core.log";
 
@@ -561,6 +622,19 @@ export interface CoreMethods {
    * worktree, the task is reassigned, and `to` continues it with a summary of
    * what was done. `to` must be running, idle and without changes of its own.
    */
+  /** The agent's changes against its base as hunks (refreshes its snapshot first). */
+  "agents.diff": { params: { id: string; path?: string }; result: AgentDiff };
+  "comments.list": { params: { agentId?: string } | void; result: CodeComment[] };
+  /**
+   * Comments on lines of an agent's changes. `action` "guidance" also gives it
+   * to the agent (as with agents.steer, after its turn); "task" turns it into a
+   * task for that agent; "note" (default) keeps it for the person.
+   */
+  "comments.add": {
+    params: { agentId: string; path: string; line: number; endLine?: number; text: string; action?: CodeComment["action"] };
+    result: CodeComment;
+  };
+  "comments.resolve": { params: { id: string; status?: CodeComment["status"] }; result: CodeComment };
   "agents.takeover": { params: { from: string; to: string; taskId?: string; note?: string }; result: TakeoverResult };
   /** Throws the agent's worktree back to a ref (default: the current base). */
   "agents.reset": { params: { id: string; ref?: string }; result: AgentState };

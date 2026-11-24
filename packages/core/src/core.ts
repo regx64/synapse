@@ -12,6 +12,7 @@ import { DEFAULT_POLICY, mergePolicy } from "./policy.js";
 import { addSecret } from "./redact.js";
 import { loadConfig, type SynapseConfig } from "./config.js";
 import { detectDecisionConflicts } from "./anchors.js";
+import { CommentService } from "./comments.js";
 import { computeTextConflicts, detectConflicts } from "./conflicts.js";
 import { currentBranch, ensureLocalExclude, repoRootOf, revParse } from "./git.js";
 import { OwnershipService } from "./ownership.js";
@@ -53,6 +54,7 @@ export class SynapseCore {
   readonly ownership: OwnershipService;
   readonly agents: AgentManager;
   readonly reviews: ReviewService;
+  readonly comments: CommentService;
   readonly collab: CollabService;
   /** Where the API is served; set by serve(). Agents' MCP servers connect back here. */
   socket?: string;
@@ -92,6 +94,7 @@ export class SynapseCore {
       refreshOwnership: (id) => this.ownership.refresh(id),
       log: this.log,
     });
+    this.comments = new CommentService({ store: this.store, agents: this.agents, collab: this.collab, ownership: this.ownership });
     this.reviews = new ReviewService({
       store: this.store,
       ownership: this.ownership,
@@ -167,7 +170,10 @@ export class SynapseCore {
       r = debounce(() => {
         void this.ownership
           .refresh(agentId)
-          .then(() => this.scheduleConflictCheck())
+          .then(() => {
+            this.scheduleConflictCheck();
+            return this.comments.relocate(agentId);
+          })
           .catch((err: Error) => this.log(`ownership refresh failed for ${agentId}: ${err.message}`));
       }, this.config.ownershipDebounceMs ?? 750);
       this.refreshers.set(agentId, r);
@@ -180,6 +186,7 @@ export class SynapseCore {
     for (const id of ids) {
       if (!this.store.getAgent(id)) throw new RpcError(ErrorCodes.NotFound, `No agent "${id}"`);
       await this.ownership.refresh(id);
+      await this.comments.relocate(id);
     }
     await this.checkConflicts();
     return this.store.allOwnership().filter((o) => ids.includes(o.agentId));
@@ -219,6 +226,10 @@ export class SynapseCore {
       "agents.stop": (p) => this.agents.stop(req(p, "id")),
       "agents.restart": (p) => this.agents.restart(req(p, "id")),
       "agents.steer": (p) => this.agents.steer(req(p, "id"), req(p, "text"), p.mode ?? "next"),
+      "agents.diff": (p) => this.comments.diff(req(p, "id"), p.path),
+      "comments.list": (p) => this.comments.list(p?.agentId),
+      "comments.add": (p) => this.comments.add(p),
+      "comments.resolve": (p) => this.comments.resolve(req(p, "id"), p.status),
       "agents.takeover": (p) => this.collab.takeover(req(p, "from"), req(p, "to"), { taskId: p.taskId, note: p.note }),
       "agents.prompt": (p) => {
         const id = req(p, "id");

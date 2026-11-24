@@ -84,6 +84,11 @@
         "category": "Synapse"
       },
       {
+        "command": "synapse.liveDiff",
+        "title": "Show an Agent's Live Changes",
+        "category": "Synapse"
+      },
+      {
         "command": "synapse.steerAgent",
         "title": "Add Guidance While an Agent Works\u2026",
         "category": "Synapse"

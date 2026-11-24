@@ -35,6 +35,10 @@ failing tests), `-32004` not found.
 | `agents.prompt` | `{ id, text }` | `{ accepted: true }`; progress arrives as events |
 | `agents.cancel` | `{ id }` | `null` |
 | `agents.steer` | `{ id, text, mode?: "next" \| "now" }` | `AgentState`. Guidance for a working agent: after the turn, or interrupting it; the same work (and task) continues in a follow-up turn. An idle agent gets it as a prompt |
+| `agents.diff` | `{ id, path? }` | `AgentDiff`: files and hunks against the agent's base, from a fresh snapshot |
+| `comments.list` | `{ agentId? }` | `CodeComment[]` |
+| `comments.add` | `{ agentId, path, line, endLine?, text, action?: "note" \| "guidance" \| "task" }` | `CodeComment`. "guidance" also gives it to the agent; "task" creates a task for it |
+| `comments.resolve` | `{ id, status? }` | `CodeComment` |
 | `agents.takeover` | `{ from, to, taskId?, note? }` | `TakeoverResult`. `to` continues `from`'s unfinished work: `from` is stopped, its changes move into `to`'s worktree, the task is reassigned, `to` is briefed |
 | `agents.reset` | `{ id, ref? }` | `AgentState` (worktree reset to the base, changes discarded) |
 | `ownership.get` | `{ agentId? }` | `AgentOwnership[]` |

@@ -312,6 +312,8 @@
     }
   }
 
+  const openComments = (id, state) => (state.comments || []).filter((c) => c.agentId === id && c.status === "open").length;
+
   function agentCard(a, state) {
     const own = state.ownership[a.id];
     const files = own ? own.files : [];
@@ -378,7 +380,12 @@
       a.lastMessage ? h("div", { class: "message" }, [a.lastMessage.slice(-400)]) : null,
       files.length
         ? h("details", { open: files.length <= 6 }, [
-            h("summary", {}, [`Owns ${files.length} file${files.length === 1 ? "" : "s"}`]),
+            h("summary", {}, [
+              `Owns ${files.length} file${files.length === 1 ? "" : "s"}`,
+              " ",
+              button("Live diff", () => cmd("synapse.liveDiff", a.id), "link"),
+              openComments(a.id, state) ? h("span", { class: "pill" }, [`💬 ${openComments(a.id, state)}`]) : null,
+            ]),
             h(
               "ul",
               { class: "files" },

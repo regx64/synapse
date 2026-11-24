@@ -54,6 +54,33 @@ synapse tasks
 synapse task done t-1
 ```
 
+## Live changes and comments
+
+**Live diff** on an agent's card (or the agent menu) opens its changes
+against its base as they happen, refreshed with every snapshot. Click a line
+number to comment on it:
+
+- **Tell the agent**: the comment, with the code it is about, goes to the
+  agent as guidance after its current turn (at once if it is idle);
+- **Make a task**: a task for that agent, with the comment and the code;
+- **Keep as note**: stays on the diff for you.
+
+Comments follow their code as the agent keeps editing; when the code they
+quote is gone, they are marked *code changed*. Resolve a comment when it is
+done.
+
+```bash
+synapse diff claude src/pricing.ts
+```
+
+```bash
+synapse comment add claude src/pricing.ts:12-14 "Clamp to zero" --tell
+```
+
+```bash
+synapse comments --agent claude
+```
+
 ## Steering and handing off
 
 **Guidance while an agent works.** Type in an agent's card while it is busy

@@ -9,6 +9,7 @@ import type {
   Approval,
   AuditEntry,
   Conflict,
+  CodeComment,
   Decision,
   Task,
   CoreEvent,
@@ -29,11 +30,13 @@ interface PersistedState {
   tasks?: Task[];
   messages?: AgentMessage[];
   decisions?: Decision[];
+  comments?: CodeComment[];
   audit?: AuditEntry[];
 }
 
 const MESSAGE_LIMIT = 500;
 const AUDIT_LIMIT = 1000;
+const COMMENT_LIMIT = 1000;
 
 /**
  * The single source of truth for collaboration state (risk T4). All
@@ -51,6 +54,7 @@ export class StateStore extends EventEmitter {
   private readonly tasks = new Map<string, Task>();
   private readonly messages = new Map<string, AgentMessage>();
   private readonly decisions = new Map<string, Decision>();
+  private readonly comments = new Map<string, CodeComment>();
   private audit: AuditEntry[] = [];
   private readonly backlog: CoreEvent[] = [];
   private readonly persistSoon = debounce(() => this.persistNow(), 200);
@@ -99,6 +103,7 @@ export class StateStore extends EventEmitter {
       tasks: this.listTasks(),
       messages: this.listMessages(),
       decisions: this.listDecisions(),
+      comments: this.listComments(),
       audit: this.audit.slice(-200),
       seq: this.seq,
     };
@@ -282,6 +287,26 @@ export class StateStore extends EventEmitter {
     return d;
   }
 
+  listComments(agentId?: string): CodeComment[] {
+    const all = [...this.comments.values()];
+    return agentId ? all.filter((c) => c.agentId === agentId) : all;
+  }
+
+  getComment(id: string): CodeComment | undefined {
+    return this.comments.get(id);
+  }
+
+  putComment(c: CodeComment): CodeComment {
+    c.updatedAt = nowIso();
+    this.comments.set(c.id, c);
+    if (this.comments.size > COMMENT_LIMIT) {
+      for (const old of [...this.comments.values()].filter((x) => x.status === "resolved").slice(0, this.comments.size - COMMENT_LIMIT)) this.comments.delete(old.id);
+    }
+    this.emitEvent("comment.updated", c);
+    this.persistSoon();
+    return c;
+  }
+
   addAudit(e: AuditEntry): void {
     this.audit.push(e);
     if (this.audit.length > AUDIT_LIMIT) this.audit.splice(0, this.audit.length - AUDIT_LIMIT);
@@ -308,6 +333,7 @@ export class StateStore extends EventEmitter {
     for (const t of data.tasks ?? []) this.tasks.set(t.id, t.status === "in_progress" ? { ...t, status: "todo" } : t);
     for (const m of data.messages ?? []) this.messages.set(m.id, m);
     for (const d of data.decisions ?? []) this.decisions.set(d.id, d);
+    for (const c of data.comments ?? []) this.comments.set(c.id, c);
     this.audit = data.audit ?? [];
   }
 
@@ -321,6 +347,7 @@ export class StateStore extends EventEmitter {
       tasks: this.listTasks(),
       messages: this.listMessages(),
       decisions: this.listDecisions(),
+      comments: this.listComments(),
       audit: this.audit.slice(-500),
     };
     fs.mkdirSync(path.dirname(this.stateFile), { recursive: true });

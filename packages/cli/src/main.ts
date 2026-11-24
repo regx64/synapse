@@ -33,6 +33,10 @@ Agents
   agent prompt <id> <text...> [--wait]
   agent steer <id> <text...> [--now] guidance while it works: after this turn, or interrupt now
   agent cancel <id>
+  diff <agent> [path]                what the agent changed, live (against its base)
+  comment add <agent> <path>:<line>[-<end>] <text...> [--tell | --make-task]
+                                     comment on its lines; --tell gives it to the agent, --make-task makes a task
+  comments [--agent ID]              open comments; comment resolve <id>
   takeover <from> <to> [--task ID] [--note TEXT]
                                      <to> continues <from>'s unfinished work (changes and task move)
 
@@ -97,6 +101,8 @@ async function main(argv: string[]): Promise<number> {
       start: { type: "boolean" },
       wait: { type: "boolean" },
       now: { type: "boolean" },
+      tell: { type: "boolean" },
+      "make-task": { type: "boolean" },
       note: { type: "string" },
       task: { type: "string" },
       agent: { type: "string" },
@@ -351,6 +357,52 @@ async function run(c: SynapseClient, cmd: string, sub: string | undefined, rest:
       const m = action === "release" ? await c.call("messages.release", { id }) : action === "reject" ? await c.call("messages.reject", { id }) : undefined;
       if (!m) throw new Error(`Unknown message action: ${action}`);
       out(m, () => `${m.id}: ${m.status}`);
+      return 0;
+    }
+    case "diff": {
+      const d = await c.call("agents.diff", { id: need(sub, "agent id"), path: rest[0] });
+      out(d, () => {
+        if (!d.files.length) return `${d.agentId} has no changes against ${d.baseCommit.slice(0, 8)}`;
+        const lines: string[] = [];
+        for (const f of d.files) {
+          lines.push(`\n${f.status === "added" ? "A" : f.status === "deleted" ? "D" : "M"} ${f.path}${f.binary ? " (binary)" : ""}${f.truncated ? " (truncated)" : ""}`);
+          for (const hk of f.hunks) {
+            lines.push(`@@ -${hk.oldStart},${hk.oldLines} +${hk.newStart},${hk.newLines} @@ ${hk.header}`);
+            for (const l of hk.lines) lines.push(`${l.t === " " ? " " : l.t}${String(l.newNo ?? l.oldNo ?? "").padStart(5)} ${l.text}`);
+          }
+        }
+        return lines.join("\n").trimStart();
+      });
+      return 0;
+    }
+    case "comments": {
+      const list = (await c.call("comments.list", { agentId: v.agent as string | undefined })).filter((x) => x.status === "open");
+      out(list, () =>
+        list.length
+          ? list.map((x) => `  ${x.id}  ${x.agentId}  ${x.path}:${x.line}${x.endLine > x.line ? `-${x.endLine}` : ""}  [${x.action}${x.taskId ? ` ${x.taskId}` : ""}]${x.outdated ? " (outdated)" : ""}  ${x.text.split("\n")[0]}`).join("\n")
+          : "no open comments",
+      );
+      return 0;
+    }
+    case "comment": {
+      const action = need(sub, "comment action");
+      if (action === "resolve") {
+        const x = await c.call("comments.resolve", { id: need(rest[0], "comment id") });
+        out(x, () => `${x.id}: ${x.status}`);
+        return 0;
+      }
+      if (action !== "add") throw new Error(`Unknown comment action: ${action}`);
+      const where = /^(.+):(\d+)(?:-(\d+))?$/.exec(need(rest[1], "path:line"));
+      if (!where) throw new Error("Give the place as path:line or path:line-end");
+      const x = await c.call("comments.add", {
+        agentId: need(rest[0], "agent id"),
+        path: where[1]!,
+        line: Number(where[2]),
+        endLine: where[3] ? Number(where[3]) : undefined,
+        text: need(rest.slice(2).join(" "), "comment text"),
+        action: v.tell ? "guidance" : v["make-task"] ? "task" : "note",
+      });
+      out(x, () => `${x.id}: ${x.action === "guidance" ? "given to the agent" : x.action === "task" ? `task ${x.taskId} created` : "noted"} at ${x.path}:${x.line}`);
       return 0;
     }
     case "takeover": {
