@@ -354,6 +354,8 @@ export class SynapseCore {
       },
       "tasks.start": (p) => this.collab.startTask(req(p, "id")),
       "tasks.setStatus": (p) => this.collab.setStatus(req(p, "id"), req(p, "status")),
+      "tasks.approvePlan": (p) => this.collab.approvePlan(req(p, "id"), p.plan),
+      "tasks.revisePlan": (p) => this.collab.revisePlan(req(p, "id"), req(p, "feedback")),
       "messages.list": (p) => this.collab.listMessages(p?.agentId),
       "messages.send": (p) => this.collab.send("human", { ...p, to: req(p, "to") }),
       "messages.release": (p) => this.collab.release(req(p, "id")),

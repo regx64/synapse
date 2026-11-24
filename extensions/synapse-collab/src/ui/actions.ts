@@ -15,7 +15,7 @@ export type ViewMessage =
   | { type: "teamDismiss"; id: string }
   | { type: "approve"; id: string; optionId: string }
   | { type: "openFile"; path: string; agentId?: string; line?: number }
-  | { type: "createTask"; title: string; description?: string; agentId?: string; dependsOn?: string[]; scope?: string[]; autoStart?: boolean }
+  | { type: "createTask"; title: string; description?: string; agentId?: string; dependsOn?: string[]; scope?: string[]; autoStart?: boolean; planFirst?: boolean }
   | { type: "taskAction"; id: string; action: "start" | "done" | "failed" | "todo" | "remove" }
   | { type: "sendMessage"; to: string; kind: "note"; subject: string; body?: string }
   | { type: "messageAction"; id: string; action: "release" | "reject" }
@@ -27,7 +27,9 @@ export type ViewMessage =
   | { type: "dismissChecklist" }
   | { type: "tellConflict"; id: string; agentId: string }
   | { type: "rewind"; id: string; n: number }
-  | { type: "runTests"; id: string };
+  | { type: "runTests"; id: string }
+  | { type: "approvePlan"; id: string; plan?: string }
+  | { type: "revisePlan"; id: string; feedback: string };
 
 /** Commands a webview may run through `{ type: "command" }`. */
 const ALLOWED_COMMANDS = new Set([
@@ -146,6 +148,12 @@ export async function handleViewMessage(m: ViewMessage, conn: CoreConnection, se
       }
       case "runTests":
         await conn.call("agents.test", { id: m.id });
+        return;
+      case "approvePlan":
+        await conn.call("tasks.approvePlan", { id: m.id, plan: m.plan });
+        return;
+      case "revisePlan":
+        await conn.call("tasks.revisePlan", { id: m.id, feedback: m.feedback });
         return;
       case "dismissChecklist":
         await context.workspaceState.update("synapse.checklistDismissed", true);

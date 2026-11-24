@@ -111,6 +111,7 @@
     "risky-command": ["shield", "error"],
     "team-claim": ["users", "info"],
     "tests-failed": ["alert", "error"],
+    "plan-review": ["task", "needs"],
   };
 
   /** The alert's title in the person's language, built from state; the core's English title if the item is gone. */
@@ -150,6 +151,10 @@
       case "risky-command": {
         const n = Number((a.title.match(/^\d+/) || ["0"])[0]);
         return n ? t("alert.risky", n) : a.title;
+      }
+      case "plan-review": {
+        const x = state.tasks.find((y) => y.id === a.ref);
+        return x ? t("alert.planReview", x.id, x.title) : a.title;
       }
       case "tests-failed": {
         const ag = agentOf(state, a.ref);
@@ -228,6 +233,8 @@
         return [button(t("review.merge"), () => cmd("synapse.prepareReview"), "primary"), a.agentId ? button(t("needs.seeChanges"), () => post("select", { id: a.agentId, show: "diff" })) : null, button(t("needs.markDone"), () => post("taskAction", { id: a.ref, action: "done" }), "ghost")];
       case "risky-command":
         return [button(t("needs.details"), () => go("audit"))];
+      case "plan-review":
+        return [button(t("plan.review"), () => go("tasks"), "primary"), button(t("plan.approveAsIs"), () => post("approvePlan", { id: a.ref }))];
       case "tests-failed":
         return [button(t("needs.seeOutput"), () => post("select", { id: a.ref, show: "tests" }), "primary"), button(t("tests.runAgain"), () => post("runTests", { id: a.ref }))];
       case "team-claim":
@@ -284,6 +291,7 @@
 
   function taskPill(x) {
     const cls = x.status === "review" ? "review" : x.status === "failed" ? "error" : x.status === "todo" ? "todo" : x.status === "done" ? "" : "";
+    if (x.plan && x.plan.state === "proposed") return h("span", { class: "pill needs" }, [t("ts.plan")]);
     const label = x.blocked && x.status === "todo" ? t("ts.blocked") : t(`ts.${x.status}`);
     return h("span", { class: `pill ${cls}` }, [label]);
   }
@@ -356,13 +364,14 @@
     const deps = /** @type {HTMLSelectElement} */ (h("select", { multiple: true, size: Math.min(4, Math.max(2, state.tasks.length)), "aria-label": t("task.dependsOn") }, state.tasks.map((x) => h("option", { value: x.id }, [`${x.id} ${x.title}`]))));
     const scope = /** @type {HTMLInputElement} */ (h("input", { placeholder: t("task.scopePh"), "aria-label": t("task.scope") }));
     const auto = /** @type {HTMLInputElement} */ (h("input", { type: "checkbox", id: "auto" }));
+    const planFirst = /** @type {HTMLInputElement} */ (h("input", { type: "checkbox", id: "planFirst" }));
     page.append(
       h("details", { class: "card card-pad form", open: state.tasks.length === 0 || undefined }, [
         h("summary", { class: "strong" }, [t("task.new")]),
         h("div", { class: "col" }, [
           title,
           desc,
-          h("div", { class: "row wrap" }, [h("span", { class: "small muted" }, [t("agent")]), h("div", { style: { width: "180px" } }, [agent]), h("label", { class: "row small", for: "auto" }, [auto, t("task.autoStart")])]),
+          h("div", { class: "row wrap" }, [h("span", { class: "small muted" }, [t("agent")]), h("div", { style: { width: "180px" } }, [agent]), h("label", { class: "row small", for: "auto" }, [auto, t("task.autoStart")]), h("label", { class: "row small", for: "planFirst", title: t("task.planFirstHint") }, [planFirst, t("task.planFirst")])]),
           state.tasks.length ? h("div", { class: "col tight" }, [h("span", { class: "small muted" }, [t("task.dependsOnHint")]), deps]) : null,
           scope,
           h("div", {}, [
@@ -370,7 +379,7 @@
               t("task.create"),
               () => {
                 if (!title.value.trim()) return title.focus();
-                post("createTask", { title: title.value, description: desc.value, agentId: agent.value || undefined, dependsOn: [...deps.selectedOptions].map((o) => o.value), scope: scope.value.split(",").map((x) => x.trim()).filter(Boolean), autoStart: auto.checked });
+                post("createTask", { title: title.value, description: desc.value, agentId: agent.value || undefined, dependsOn: [...deps.selectedOptions].map((o) => o.value), scope: scope.value.split(",").map((x) => x.trim()).filter(Boolean), autoStart: auto.checked, planFirst: planFirst.checked || undefined });
                 title.value = "";
                 desc.value = "";
               },
@@ -403,12 +412,34 @@
           ]),
           x.description ? h("div", { class: "small pre fg2" }, [x.description]) : null,
           x.outOfScope && x.outOfScope.length ? h("div", { class: "small error-text" }, [t("task.outOfScope", x.outOfScope.join(", "))]) : null,
+          planBlock(x),
           x.summary ? h("details", {}, [h("summary", { class: "small" }, [t("task.summary")]), h("div", { class: "small pre" }, [x.summary])]) : null,
           actions.length ? h("div", { class: "row wrap" }, actions) : null,
         ]),
       );
     }
     page.append(list);
+  }
+
+  /** A plan-first task's plan: being drafted, waiting for approval (editable), or approved. */
+  function planBlock(x) {
+    const p = x.plan;
+    if (!p) return x.planFirst ? h("div", { class: "tiny muted" }, [t("plan.firstNote")]) : null;
+    if (p.state === "drafting") return h("div", { class: "row small muted" }, [h("span", { class: "dot sm pulse", style: { background: "var(--sy-working)" } }), t("plan.drafting")]);
+    if (p.state === "approved") return h("details", {}, [h("summary", { class: "small" }, [t("plan.approved")]), h("div", { class: "small pre fg2" }, [p.text || ""])]);
+    const text = /** @type {HTMLTextAreaElement} */ (h("textarea", { rows: Math.min(10, (p.text || "").split("\n").length + 1), "aria-label": t("plan.edit") }));
+    text.value = p.text || "";
+    const feedback = /** @type {HTMLInputElement} */ (h("input", { placeholder: t("plan.feedbackPh"), "aria-label": t("plan.feedback") }));
+    return h("div", { class: "plan-review col" }, [
+      h("div", { class: "row small strong st-needs" }, [icon("task", 14), p.rounds > 1 ? t("plan.proposedAgain", p.rounds) : t("plan.proposed")]),
+      p.changedFiles ? h("div", { class: "small error-text" }, [t("plan.changedFiles")]) : null,
+      text,
+      h("div", { class: "row wrap" }, [
+        button(t("plan.approve"), () => post("approvePlan", { id: x.id, plan: text.value }), "primary sm"),
+        h("div", { class: "grow", style: { minWidth: "200px" } }, [feedback]),
+        button(t("plan.revise"), () => feedback.value.trim() ? post("revisePlan", { id: x.id, feedback: feedback.value }) : feedback.focus(), "sm"),
+      ]),
+    ]);
   }
 
   // ---------------------------------------------------------------------------

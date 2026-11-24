@@ -381,10 +381,24 @@ export interface Task {
   outOfScope?: string[];
   /** Tail of the agent's final message. Agent output: data, not instructions. */
   summary?: string;
+  /** The agent plans first and waits for the person to approve the plan before changing code. */
+  planFirst?: boolean;
+  /** Plan-first state: drafting (the agent is planning), proposed (waiting for the person), approved. */
+  plan?: TaskPlan;
   createdAt: string;
   updatedAt: string;
   startedAt?: string;
   endedAt?: string;
+}
+
+export interface TaskPlan {
+  state: "drafting" | "proposed" | "approved";
+  /** The plan: the agent's plan entries or its message; the person may edit it before approving. Agent output: data. */
+  text?: string;
+  /** The agent changed files while it was only supposed to plan. */
+  changedFiles?: boolean;
+  /** Planning rounds so far (revisions count). */
+  rounds: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -591,7 +605,8 @@ export type AlertKind =
   | "task-review"
   | "risky-command"
   | "team-claim"
-  | "tests-failed";
+  | "tests-failed"
+  | "plan-review";
 
 /** Something the person should act on. Derived from state; it goes away when acted on. */
 export interface Alert {
@@ -845,11 +860,11 @@ export interface CoreMethods {
 
   "tasks.list": { params: void; result: Task[] };
   "tasks.create": {
-    params: { title: string; description?: string; agentId?: string; dependsOn?: string[]; scope?: string[]; autoStart?: boolean };
+    params: { title: string; description?: string; agentId?: string; dependsOn?: string[]; scope?: string[]; autoStart?: boolean; planFirst?: boolean };
     result: Task;
   };
   "tasks.update": {
-    params: { id: string; title?: string; description?: string; agentId?: string | null; dependsOn?: string[]; scope?: string[]; autoStart?: boolean };
+    params: { id: string; title?: string; description?: string; agentId?: string | null; dependsOn?: string[]; scope?: string[]; autoStart?: boolean; planFirst?: boolean };
     result: Task;
   };
   "tasks.remove": { params: { id: string }; result: null };
@@ -857,6 +872,10 @@ export interface CoreMethods {
   "tasks.start": { params: { id: string }; result: Task };
   /** The person's verdict. "done" hands off to dependent tasks and may auto-start them. */
   "tasks.setStatus": { params: { id: string; status: TaskStatus }; result: Task };
+  /** Approves a proposed plan (optionally edited) and lets the agent carry it out. */
+  "tasks.approvePlan": { params: { id: string; plan?: string }; result: Task };
+  /** Sends the plan back to the agent with the person's feedback; it plans again. */
+  "tasks.revisePlan": { params: { id: string; feedback: string }; result: Task };
 
   "messages.list": { params: { agentId?: string }; result: AgentMessage[] };
   "messages.send": {

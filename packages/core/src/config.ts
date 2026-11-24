@@ -20,6 +20,8 @@ export interface SynapseConfig {
   testsAfterTurn?: boolean;
   /** Give failing test output back to the agent as guidance (at most 3 times in a row). Default false. */
   testsFeedback?: boolean;
+  /** New tasks ask the agent for a plan first, to be approved before it changes code. Default false. */
+  planFirst?: boolean;
   /** Debounce for ownership refreshes after file changes. Default 750 ms. */
   ownershipDebounceMs?: number;
   /** Default permission policy for agents, on top of Synapse's built-in default. */

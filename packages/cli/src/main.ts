@@ -56,8 +56,9 @@ Coordination
 
 Tasks (the person splits a goal and assigns subtasks)
   tasks                              the task graph
-  task add <title> [--agent ID] [--after t-1,t-2] [--scope GLOB,..] [--auto] [--description TEXT]
+  task add <title> [--agent ID] [--after t-1,t-2] [--scope GLOB,..] [--auto] [--plan-first] [--description TEXT]
   task start|done|fail|review|todo|rm <task-id>
+  task plan <task-id> [approve [--plan TEXT] | revise <feedback>]
 
 Messages and decisions
   messages [--agent ID]              structured messages between agents
@@ -321,11 +322,29 @@ async function run(c: SynapseClient, cmd: string, sub: string | undefined, rest:
           dependsOn: csv(v.after),
           scope: csv(v.scope),
           autoStart: !!v.auto,
+          planFirst: v["plan-first"] ? true : undefined,
         });
         out(t, () => `added ${t.id}: ${t.title}${t.blocked ? " (blocked)" : ""}`);
         return 0;
       }
       const id = need(rest[0], "task id");
+      if (action === "plan") {
+        const verb = rest[1];
+        if (verb === "approve") {
+          const x = await c.call("tasks.approvePlan", { id, plan: v.plan as string | undefined });
+          out(x, () => `${x.id}: plan approved, ${x.agentId} carries it out`);
+          return 0;
+        }
+        if (verb === "revise") {
+          const x = await c.call("tasks.revisePlan", { id, feedback: need(rest.slice(2).join(" "), "feedback") });
+          out(x, () => `${x.id}: plan sent back to ${x.agentId}`);
+          return 0;
+        }
+        const x = (await c.call("tasks.list")).find((y) => y.id === id);
+        if (!x) throw new Error(`No task ${id}`);
+        out(x.plan ?? null, () => (x.plan ? `${x.id} plan (${x.plan.state}, round ${x.plan.rounds}):\n${x.plan.text ?? "(being written)"}` : `${x.id} has no plan${x.planFirst ? " yet" : " (not plan-first)"}`));
+        return 0;
+      }
       if (action === "rm") {
         await c.call("tasks.remove", { id });
         out({ removed: id }, () => `removed ${id}`);

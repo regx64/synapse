@@ -57,6 +57,19 @@ export function computeAlerts(s: Omit<CoreState, "alerts">, now = Date.now()): A
   }
   for (const t of s.tasks) {
     if (t.status !== "review") continue;
+    if (t.plan?.state === "proposed") {
+      out.push({
+        id: `plan-review:${t.id}`,
+        kind: "plan-review",
+        level: "action",
+        title: `${t.id} plan to approve: ${t.title}`,
+        detail: t.plan.changedFiles ? "the agent changed files while planning" : undefined,
+        agentId: t.agentId,
+        ref: t.id,
+        at: t.endedAt ?? t.updatedAt,
+      });
+      continue;
+    }
     out.push({
       id: `task-review:${t.id}`,
       kind: "task-review",

@@ -72,6 +72,11 @@ window.SYNAPSE_STRINGS = {
     "detail.rewind": "Rewind to before this", "detail.rewound": "Rewound the worktree to before a turn",
     "tests.running": "Testing", "tests.passed": "Tests pass", "tests.failed": "Tests fail", "tests.run": "Run tests", "tests.runAgain": "Run tests again", "tests.none": "Tests haven't run in this agent's worktree yet.",
     "alert.testsFailed": "{0}'s tests fail", "needs.seeOutput": "See output",
+    "task.planFirst": "Plan first", "task.planFirstHint": "The agent proposes a plan and waits for your approval before changing code", "ts.plan": "Plan to approve",
+    "plan.firstNote": "Plans first: the agent proposes a plan for your approval.", "plan.drafting": "The agent is writing its plan…", "plan.approved": "Approved plan", "plan.edit": "Plan",
+    "plan.proposed": "Plan to approve", "plan.proposedAgain": "Revised plan to approve (round {0})", "plan.changedFiles": "The agent changed files while it should only have planned. You can rewind it from its conversation.",
+    "plan.approve": "Approve and start", "plan.approveAsIs": "Approve as is", "plan.review": "Review plan", "plan.revise": "Ask for changes", "plan.feedback": "What should change", "plan.feedbackPh": "What should change in the plan?",
+    "alert.planReview": "{0} plan to approve: {1}",
     "stop.cancelled": "Turn stopped", "stop.refusal": "The agent declined", "stop.max_tokens": "Stopped: output limit reached", "stop.max_turn_requests": "Stopped: step limit reached",
   },
   ko: {
@@ -144,6 +149,11 @@ window.SYNAPSE_STRINGS = {
     "detail.rewind": "이 턴 전으로 되돌리기", "detail.rewound": "작업 공간을 이전 턴 전으로 되돌렸습니다",
     "tests.running": "테스트 중", "tests.passed": "테스트 통과", "tests.failed": "테스트 실패", "tests.run": "테스트 실행", "tests.runAgain": "테스트 다시 실행", "tests.none": "이 에이전트의 작업 공간에서 아직 테스트를 돌리지 않았습니다.",
     "alert.testsFailed": "{0}의 테스트가 실패합니다", "needs.seeOutput": "출력 보기",
+    "task.planFirst": "계획 먼저", "task.planFirstHint": "에이전트가 계획을 먼저 제안하고, 승인한 뒤에 코드를 바꿉니다", "ts.plan": "계획 승인 대기",
+    "plan.firstNote": "계획 먼저: 에이전트가 계획을 제안하면 승인한 뒤 진행합니다.", "plan.drafting": "에이전트가 계획을 쓰는 중…", "plan.approved": "승인된 계획", "plan.edit": "계획",
+    "plan.proposed": "승인할 계획", "plan.proposedAgain": "수정된 계획 ({0}번째)", "plan.changedFiles": "에이전트가 계획만 세워야 할 때 파일을 바꿨습니다. 대화 화면에서 되돌릴 수 있습니다.",
+    "plan.approve": "승인하고 시작", "plan.approveAsIs": "그대로 승인", "plan.review": "계획 보기", "plan.revise": "수정 요청", "plan.feedback": "바꿀 점", "plan.feedbackPh": "계획에서 무엇을 바꿀까요?",
+    "alert.planReview": "{0} 계획 승인 대기: {1}",
     "stop.cancelled": "턴을 중지했습니다", "stop.refusal": "에이전트가 거절했습니다", "stop.max_tokens": "중지: 출력 한도 도달", "stop.max_turn_requests": "중지: 단계 한도 도달",
   },
 };
