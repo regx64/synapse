@@ -4,7 +4,7 @@ import * as path from "node:path";
 import { parseArgs } from "node:util";
 import { SynapseCore } from "./core.js";
 import { serve } from "./server.js";
-import { writeCrashReport } from "./telemetry.js";
+import { writeCrashReport } from "./crash.js";
 import { redact } from "./redact.js";
 
 /**
@@ -56,7 +56,7 @@ async function main(): Promise<void> {
   process.on("SIGTERM", () => void shutdown("SIGTERM"));
 }
 
-// Crash reports are written locally (redacted) and sent only if the user opted in to telemetry.
+// Crash reports are written locally (redacted) and never sent.
 process.on("uncaughtException", (err) => {
   const file = writeCrashReport(err, "uncaughtException");
   process.stderr.write(`synapse-core crashed: ${err.message}${file ? ` (report: ${file})` : ""}\n`);

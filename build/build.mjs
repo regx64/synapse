@@ -42,6 +42,8 @@ run("corepack", ["enable"], { cwd: VSCODE });
 run("pnpm", ["install", "--frozen-lockfile"], { cwd: VSCODE, env: { ...env, ELECTRON_SKIP_BINARY_DOWNLOAD: "" } });
 const target = platform === "darwin" ? `vscode-darwin-${arch}-min` : platform === "win32" ? `vscode-win32-${arch}-min` : `vscode-linux-${arch}-min`;
 run("pnpm", ["run", "gulp", target], { cwd: VSCODE, env });
-// What users receive must carry every license it needs (e.g. the Copilot CLI's).
+// Upstream product names in the UI text become Synapse (no core patch needed).
+run(process.execPath, ["build/rebrand.mjs", buildOutput(platform, arch)], { cwd: ROOT });
+// What users receive must carry every license it needs, and no GitHub Copilot.
 run(process.execPath, ["build/check-output-licenses.mjs", buildOutput(platform, arch), "--fix"], { cwd: ROOT });
 console.log(`built ${target}: ${buildOutput(platform, arch)}`);

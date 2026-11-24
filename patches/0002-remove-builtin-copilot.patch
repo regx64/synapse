@@ -1,0 +1,109 @@
+diff --git a/build/gulpfile.vscode.ts b/build/gulpfile.vscode.ts
+index 9994b985..c1328517 100644
+--- a/build/gulpfile.vscode.ts
++++ b/build/gulpfile.vscode.ts
+@@ -24,9 +24,9 @@ import { getProductionDependencies, toPackagedLayout } from './lib/dependencies.
+ import { config } from './lib/electron.ts';
+ import { createAsar } from './lib/asar.ts';
+ import minimist from 'minimist';
+-import { compileNonNativeExtensionsBuildTask, compileNativeExtensionsBuildTask, compileAllExtensionsBuildTask, compileExtensionMediaBuildTask, cleanExtensionsBuildTask, compileCopilotExtensionBuildTask } from './gulpfile.extensions.ts';
++import { compileNonNativeExtensionsBuildTask, compileNativeExtensionsBuildTask, compileAllExtensionsBuildTask, compileExtensionMediaBuildTask, cleanExtensionsBuildTask } from './gulpfile.extensions.ts';
+ import { checkApiProposalNamesTask, copyCodiconsTask } from './lib/compilation.ts';
+-import { ensureCopilotPlatformPackage, getCopilotExcludeFilter, getCopilotRuntimePrebuildFiles, getCopilotRuntimeVersion, getCopilotTgrepExcludeFilter, getRipgrepExcludeFilter, prepareBuiltInCopilotRipgrepShim, renderCopilotShimLauncher } from './lib/copilot.ts';
++import { getCopilotRuntimeVersion, getRipgrepExcludeFilter } from './lib/copilot.ts';
+ import { getLockedVersion } from './lib/pnpmLock.ts';
+ import { ensureOSProxyResolverPlatformPackage, getOSProxyResolverExcludeFilter, getOSProxyResolverPlatformFiles } from './lib/osProxyResolver.ts';
+ import { readAgentSdkResults } from './agent-sdk/common.ts';
+@@ -251,14 +251,12 @@ function packageTask(platform: string, arch: string, sourceFolderName: string, d
+ 			.pipe(filter(depFilterPattern))
+ 			.pipe(util.cleanNodeModules(path.join(import.meta.dirname, '.moduleignore')))
+ 			.pipe(util.cleanNodeModules(path.join(import.meta.dirname, `.moduleignore.${process.platform}`)));
+-		ensureCopilotPlatformPackage(platform, arch);
+-		const copilotRuntimePrebuilds = gulp.src(getCopilotRuntimePrebuildFiles(platform, arch), { base: '.', dot: true, allowEmpty: true });
++		// Synapse: the built-in GitHub Copilot is not shipped (no runtime, SDK or extension).
+ 		ensureOSProxyResolverPlatformPackage(platform, arch);
+ 		const osProxyResolverPlatformPackage = gulp.src(getOSProxyResolverPlatformFiles(platform, arch), { base: '.', dot: true, allowEmpty: true });
+ 		// `cleanedDeps` has already dropped dot files; keep those of the platform packages, such as SDK plugin manifests.
+-		const deps = es.merge(cleanedDeps, copilotRuntimePrebuilds, osProxyResolverPlatformPackage)
+-			.pipe(filter(getCopilotExcludeFilter(platform, arch), { dot: true }))
+-			.pipe(filter(getCopilotTgrepExcludeFilter(platform, arch), { dot: true }))
++		const deps = es.merge(cleanedDeps, osProxyResolverPlatformPackage)
++			.pipe(filter(['**', '!**/node_modules/@github/copilot*/**'], { dot: true }))
+ 			.pipe(filter(getRipgrepExcludeFilter(platform, arch), { dot: true }))
+ 			.pipe(filter(getFoundryLocalExcludeFilter(), { dot: true }))
+ 			.pipe(filter(getOSProxyResolverExcludeFilter(platform, arch), { dot: true }))
+@@ -428,19 +426,7 @@ function packageTask(platform: string, arch: string, sourceFolderName: string, d
+ 				.pipe(replace('@@VERSIONFOLDER@@', versionedResourcesFolder ? `${versionedResourcesFolder}\\` : ''))
+ 				.pipe(rename(product.nameShort + '.VisualElementsManifest.xml')));
+ 
+-			// Setup publishes it next to the copilot.exe shim; see build/win32/copilot.iss.
+-			result = es.merge(result, gulp.src('resources/win32/bin/copilot.sh', { base: 'resources/win32' })
+-				.pipe(es.through(function (file) {
+-					file.contents = Buffer.from(renderCopilotShimLauncher(file.contents.toString('utf8'), {
+-						commit: String(commit),
+-						quality: String(quality),
+-						applicationName: product.applicationName,
+-						dataFolderName: product.dataFolderName,
+-						serverDataFolderName: product.serverDataFolderName || '.vscode-remote',
+-					}));
+-					this.emit('data', file);
+-				}))
+-				.pipe(rename(f => { f.dirname = 'bin/copilot-shim'; f.basename = 'copilot'; f.extname = ''; })));
++			// Synapse: no Copilot CLI shim (the built-in Copilot is not shipped).
+ 
+ 			result = es.merge(result, gulp.src('.build/policies/win32/**', { base: '.build/policies/win32' })
+ 				.pipe(rename(f => f.dirname = `policies/${f.dirname}`)));
+@@ -553,23 +539,6 @@ function patchWin32DependenciesTask(destinationFolderName: string) {
+ 	};
+ }
+ 
+-function prepareCopilotRipgrepShimTask(platform: string, arch: string, destinationFolderName: string) {
+-	const outputDir = path.join(path.dirname(root), destinationFolderName);
+-
+-	return async () => {
+-		// On Windows with win32VersionedUpdate, app resources live under a
+-		// commit-hash prefix: {output}/{commitHash}/resources/app/
+-		const versionedResourcesFolder = util.getVersionedResourcesFolder(platform, commit!);
+-		const appBase = platform === 'darwin'
+-			? path.join(outputDir, `${product.nameLong}.app`, 'Contents', 'Resources', 'app')
+-			: path.join(outputDir, versionedResourcesFolder, 'resources', 'app');
+-		const appNodeModulesDir = path.join(appBase, 'node_modules.asar.unpacked');
+-
+-		const builtInCopilotExtensionDir = path.join(appBase, 'extensions', 'copilot');
+-		prepareBuiltInCopilotRipgrepShim(platform, arch, builtInCopilotExtensionDir, appNodeModulesDir);
+-	};
+-}
+-
+ function generateNodeCompileCacheTask(platform: string, destinationFolderName: string) {
+ 	const outputDirectory = path.join(path.dirname(root), destinationFolderName);
+ 
+@@ -606,7 +575,6 @@ BUILD_TARGETS.forEach(buildTarget => {
+ 			compileNativeExtensionsBuildTask,
+ 			util.rimraf(path.join(buildRoot, destinationFolderName)),
+ 			packageTask(platform, arch, sourceFolderName, destinationFolderName, opts),
+-			prepareCopilotRipgrepShimTask(platform, arch, destinationFolderName)
+ 		];
+ 
+ 		if (platform === 'win32') {
+@@ -633,7 +601,6 @@ BUILD_TARGETS.forEach(buildTarget => {
+ 			copyCodiconsTask,
+ 			cleanExtensionsBuildTask,
+ 			compileNonNativeExtensionsBuildTask,
+-			compileCopilotExtensionBuildTask,
+ 			compileExtensionMediaBuildTask,
+ 			writeISODate('out-build'),
+ 			esbuildBundleTask,
+diff --git a/src/vs/workbench/contrib/chat/browser/chat.shared.contribution.ts b/src/vs/workbench/contrib/chat/browser/chat.shared.contribution.ts
+index d98796c8..e462597f 100644
+--- a/src/vs/workbench/contrib/chat/browser/chat.shared.contribution.ts
++++ b/src/vs/workbench/contrib/chat/browser/chat.shared.contribution.ts
+@@ -2415,7 +2415,8 @@ configurationRegistry.registerConfiguration({
+ 		[ChatAIDisabledSettingId]: {
+ 			type: 'boolean',
+ 			description: nls.localize('chat.disableAIFeatures', "Disable and hide built-in AI features provided by GitHub Copilot, including chat and inline suggestions."),
+-			default: false,
++			// Synapse: the built-in GitHub Copilot is not shipped, so its AI features are off by default.
++			default: true,
+ 			scope: ConfigurationScope.WINDOW,
+ 		},
+ 		[ChatConfiguration.CopilotCliCommandEnabled]: {

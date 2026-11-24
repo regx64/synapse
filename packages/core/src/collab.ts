@@ -1,10 +1,14 @@
 import * as fs from "node:fs";
+import * as fsp from "node:fs/promises";
 import * as path from "node:path";
-import type { AgentMessage, AgentOwnership, Decision, MessageKind, Task, TaskStatus } from "@synapse/protocol";
+import type { AgentMessage, AgentOwnership, Decision, DecisionPin, MessageKind, Task, TaskStatus } from "@synapse/protocol";
 import { ErrorCodes, RpcError } from "@synapse/protocol";
 import type { AgentManager } from "./agents.js";
+import { checkAnchors, createAnchor, normalizePin, pinLabel, samePin, symbolAtLine } from "./anchors.js";
 import type { SynapseConfig } from "./config.js";
+import { revParse } from "./git.js";
 import { matchesAny } from "./policy.js";
+import { parseSource } from "./symbols.js";
 import { redact } from "./redact.js";
 import type { StateStore } from "./store.js";
 import { nowIso, randomId } from "./util.js";
@@ -360,7 +364,10 @@ export class CollabService {
     ];
     if (decisions.length) {
       lines.push("", "Accepted project decisions:");
-      for (const d of decisions) lines.push(`- ${d.id}: ${neutralize(d.title)}: ${neutralize(d.decision)}${d.rationale ? ` (why: ${neutralize(d.rationale)})` : ""}`);
+      for (const d of decisions) {
+        const pins = d.anchors?.length ? ` [applies to: ${d.anchors.map((a) => neutralize(pinLabel(a))).join("; ")}]` : "";
+        lines.push(`- ${d.id}: ${neutralize(d.title)}: ${neutralize(d.decision)}${d.rationale ? ` (why: ${neutralize(d.rationale)})` : ""}${pins}`);
+      }
     }
     if (messages.length) {
       lines.push("", "Messages for you:");
@@ -383,12 +390,16 @@ export class CollabService {
     return this.store.listDecisions();
   }
 
-  addDecision(
+  async addDecision(
     author: string,
-    p: { title: string; decision: string; rationale?: string; tags?: string[]; supersedes?: string; status?: Decision["status"]; taskId?: string },
-  ): Decision {
+    p: { title: string; decision: string; rationale?: string; tags?: string[]; supersedes?: string; status?: Decision["status"]; taskId?: string; pins?: DecisionPin[] },
+  ): Promise<Decision> {
     if (!p?.title?.trim() || !p.decision?.trim()) throw new RpcError(ErrorCodes.InvalidParams, "A decision needs a title and the decision itself");
     if (p.supersedes && !this.store.getDecision(p.supersedes)) throw new RpcError(ErrorCodes.NotFound, `No decision "${p.supersedes}"`);
+    if ((p.pins?.length ?? 0) > 20) throw new RpcError(ErrorCodes.InvalidParams, "A decision can be pinned to at most 20 places");
+    const base = p.pins?.length ? await this.baseCommit() : "";
+    const anchors = [];
+    for (const pin of p.pins ?? []) anchors.push(await createAnchor(this.store.repoRoot, base, pin));
     const fromAgent = author !== "human";
     const status = fromAgent ? "proposed" : (p.status ?? "accepted");
     const d: Decision = {
@@ -403,6 +414,7 @@ export class CollabService {
       supersedes: p.supersedes,
       createdAt: nowIso(),
       decidedAt: status === "accepted" ? nowIso() : undefined,
+      anchors: anchors.length ? anchors : undefined,
     };
     this.store.putDecision(d);
     if (status === "accepted" && d.supersedes) this.supersede(d.supersedes);
@@ -418,6 +430,90 @@ export class CollabService {
     if (status === "accepted" && d.supersedes) this.supersede(d.supersedes);
     this.writeDecisionLog();
     return next;
+  }
+
+  private async baseCommit(): Promise<string> {
+    return revParse(this.store.repoRoot, this.store.baseRef);
+  }
+
+  private requireDecision(id: string): Decision {
+    const d = this.store.getDecision(id);
+    if (!d) throw new RpcError(ErrorCodes.NotFound, `No decision "${id}"`);
+    return d;
+  }
+
+  /**
+   * Pins a decision to a file or a symbol on the base branch. With `line` and
+   * no symbol, the innermost symbol at that line of the file in the person's
+   * checkout is pinned (by name; the fingerprint comes from the base branch).
+   */
+  async pinDecision(id: string, pin: DecisionPin & { line?: number }): Promise<Decision> {
+    const d = this.requireDecision(id);
+    let p = normalizePin(pin);
+    if (!p.symbol && typeof pin.line === "number") {
+      const content = await fsp.readFile(path.join(this.store.repoRoot, p.path), "utf8").catch(() => null);
+      const parsed = content === null ? null : await parseSource(p.path, content);
+      const sym = parsed ? symbolAtLine(parsed.symbols, pin.line) : undefined;
+      if (sym) p = { path: p.path, symbol: sym.name };
+    }
+    if (d.anchors?.some((a) => samePin(a, p))) return d;
+    if ((d.anchors?.length ?? 0) >= 20) throw new RpcError(ErrorCodes.InvalidParams, "A decision can be pinned to at most 20 places");
+    const anchor = await createAnchor(this.store.repoRoot, await this.baseCommit(), p);
+    const next = this.store.putDecision({ ...this.requireDecision(id), anchors: [...(d.anchors ?? []), anchor] });
+    this.writeDecisionLog();
+    return next;
+  }
+
+  unpinDecision(id: string, pin: DecisionPin): Decision {
+    const d = this.requireDecision(id);
+    const p = normalizePin(pin);
+    const anchors = (d.anchors ?? []).filter((a) => !samePin(a, p));
+    if (anchors.length === (d.anchors ?? []).length) throw new RpcError(ErrorCodes.NotFound, `${d.id} is not pinned to ${pinLabel(p)}`);
+    const next = this.store.putDecision({ ...d, anchors: anchors.length ? anchors : undefined });
+    this.writeDecisionLog();
+    return next;
+  }
+
+  /** The person confirms the decision still holds: every anchor is re-fingerprinted at the base branch. */
+  async repinDecision(id: string): Promise<Decision> {
+    const d = this.requireDecision(id);
+    if (!d.anchors?.length) throw new RpcError(ErrorCodes.InvalidParams, `${d.id} is not pinned to any code`);
+    const base = await this.baseCommit();
+    const anchors = [];
+    for (const a of d.anchors) {
+      try {
+        anchors.push(await createAnchor(this.store.repoRoot, base, a));
+      } catch (err) {
+        throw new RpcError(ErrorCodes.Conflict, `${pinLabel(a)}: ${(err as Error).message}. Unpin it, then re-pin.`);
+      }
+    }
+    const next = this.store.putDecision({ ...this.requireDecision(id), anchors });
+    this.writeDecisionLog();
+    return next;
+  }
+
+  private lastAnchorCheck = "";
+
+  /** Marks anchors whose code changed on the base branch. Cheap when the base has not moved. */
+  async checkDecisionAnchors(): Promise<void> {
+    const base = await this.baseCommit().catch(() => undefined);
+    if (!base || base === this.lastAnchorCheck) return;
+    let logChanged = false;
+    for (const d of this.store.listDecisions()) {
+      const r = await checkAnchors(this.store.repoRoot, base, d);
+      if (!r) continue;
+      // Another call may have changed the decision meanwhile; keep its other fields.
+      const current = this.store.getDecision(d.id);
+      if (!current || JSON.stringify(current.anchors) !== JSON.stringify(d.anchors)) continue;
+      this.store.putDecision({ ...current, anchors: r.decision.anchors });
+      if (r.stateChanged) {
+        logChanged = true;
+        const changed = r.decision.anchors!.filter((a) => a.state !== "current").map(pinLabel);
+        if (changed.length) this.deps.log(`decision ${d.id}: pinned code changed on ${this.store.baseRef}: ${changed.join(", ")}`);
+      }
+    }
+    this.lastAnchorCheck = base;
+    if (logChanged) this.writeDecisionLog();
   }
 
   private supersede(id: string): void {
@@ -436,9 +532,12 @@ export class CollabService {
     const file = path.resolve(this.store.repoRoot, rel);
     const by = (s: Decision["status"]) => this.store.listDecisions().filter((d) => d.status === s);
     const who = (a: string) => (a === "human" ? "person" : (this.store.getAgent(a)?.name ?? a));
+    const note = { current: "", changed: " (code changed since pinned: check this decision still holds)", missing: " (no longer on the base branch)" };
+    const pins = (d: Decision) =>
+      d.anchors?.length ? ["", "Applies to:", "", ...d.anchors.map((a) => `- \`${a.path}\`${a.symbol ? ` › \`${a.symbol}\`` : ""}${note[a.state]}`)] : [];
     const section = (title: string, list: Decision[]) =>
       list.length
-        ? [`## ${title}`, "", ...list.flatMap((d) => [`### ${d.id}: ${d.title}`, "", d.decision, ...(d.rationale ? ["", `Why: ${d.rationale}`] : []), "", `_${who(d.author)}, ${d.createdAt.slice(0, 10)}${d.supersedes ? `, supersedes ${d.supersedes}` : ""}${d.tags.length ? `, tags: ${d.tags.join(", ")}` : ""}_`, ""])]
+        ? [`## ${title}`, "", ...list.flatMap((d) => [`### ${d.id}: ${d.title}`, "", d.decision, ...(d.rationale ? ["", `Why: ${d.rationale}`] : []), ...pins(d), "", `_${who(d.author)}, ${d.createdAt.slice(0, 10)}${d.supersedes ? `, supersedes ${d.supersedes}` : ""}${d.tags.length ? `, tags: ${d.tags.join(", ")}` : ""}_`, ""])]
         : [];
     const md = [
       "# Decision log",

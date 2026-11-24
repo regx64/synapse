@@ -14,9 +14,9 @@ collaboration logic lives in **synapse-core**, a separate process with its own
 API, so a later standalone IDE (or a fallback to a plain VS Code extension)
 replaces only the UI. See [the plan](docs/plan.md).
 
-> **Name.** "Synapse" is a working name with a high trademark-conflict risk
+> **Name.** Synapse is a non-profit project, so no trademark search was done
 > (risk L3). Every product identifier lives in [`product.json`](product.json)
-> and the package names, so a rename is mechanical.
+> and the package names, so a rename stays mechanical if a conflict comes up.
 
 ## What works today
 
@@ -24,8 +24,9 @@ replaces only the UI. See [the plan](docs/plan.md).
   branch `synapse/<id>`, created and cleaned up automatically. Agents can only
   read and write inside their own worktree; your checkout is yours.
 - **Agents over ACP.** Synapse is an [Agent Client Protocol](https://agentclientprotocol.com)
-  client. Presets for Claude (Claude Code's ACP adapter) and Codex CLI, plus
-  any ACP command. You use your own subscriptions or API keys.
+  client. Presets for Claude (its ACP adapter, on the Claude Agent SDK) and
+  Codex, plus any ACP command. You use your own API keys or accounts; see
+  [agent terms](docs/agent-terms.md).
 - **Ownership down to the symbol.** tree-sitter (TypeScript, JavaScript,
   Python, Go, Rust, Java) records which functions, methods and classes each
   agent is changing, including uncommitted and untracked files.
@@ -46,12 +47,14 @@ replaces only the UI. See [the plan](docs/plan.md).
 - **Structured messages and a decision log.** Agents message each other and
   propose decisions through a Synapse MCP server; their text is delivered as
   data, and anything that reads like instructions is held for you. Accepted
-  decisions go into every task prompt.
+  decisions go into every task prompt. Pin a decision to the functions it is
+  about, and Synapse tells you when an agent changes that code, and when it
+  changes on your branch, so you can check the decision still holds.
 - **Permission policies.** Per-agent rules for files, commands and network;
   everything else comes to you; everything is audited.
-- **Opt-in telemetry** (off by default, counts only, previewable) and
-  redacted local crash reports.
-- **UIs:** a built-in VS Code extension (board, editor markers in each agent's
+- **No telemetry.** Synapse collects nothing about you; crash reports are
+  redacted and stay on your machine. The built-in GitHub Copilot is removed.
+- **UIs:** a built-in extension (board, editor markers in each agent's
   color, conflicts in the Problems panel, status bar, review panel) and a
   `synapse` CLI. Both are clients of the same core API.
 
@@ -111,8 +114,10 @@ npx synapse status
 npx synapse review
 ```
 
-`synapse --help` lists every command. Claude needs a Claude login or
-`ANTHROPIC_API_KEY`; Codex needs a ChatGPT login or `OPENAI_API_KEY`.
+`synapse --help` lists every command. Claude needs `ANTHROPIC_API_KEY` (or
+Bedrock / Vertex AI credentials): Anthropic's terms do not let tools built on
+its Agent SDK offer a Claude subscription login. Codex uses `OPENAI_API_KEY`
+or your own Codex sign-in. See [agent terms](docs/agent-terms.md).
 
 ### In the editor
 

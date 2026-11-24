@@ -50,8 +50,16 @@ synapse agent add codex --start
 ```
 
 Each agent gets its own git worktree (`.synapse/worktrees/<id>`) and branch
-(`synapse/<id>`). They use your own logins: run `claude` or `codex` once
-beforehand to sign in, or set `ANTHROPIC_API_KEY` / `OPENAI_API_KEY`.
+(`synapse/<id>`). They use your own credentials:
+
+- **Claude** needs `ANTHROPIC_API_KEY` (from the Claude Console), or Amazon
+  Bedrock / Google Vertex AI credentials. Anthropic's terms do not allow
+  tools built on the Claude Agent SDK to use a Claude subscription login, so
+  Synapse does not offer one.
+- **Codex** uses `OPENAI_API_KEY`, or the sign-in you made by running `codex`
+  once.
+
+See [agent terms](agent-terms.md) for why.
 
 No credentials? `synapse agent add mock --start` adds a scripted agent, and
 `npm run demo` (in the Synapse repo) plays a full scenario.

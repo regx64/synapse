@@ -6,11 +6,11 @@ what happens next, not the calendar. Current state in detail:
 
 | Phase | What | State |
 | --- | --- | --- |
-| 0 | Decide and validate: interviews, trademark search, ACP spike | Spike done; interviews, trademark and G0 decision open |
-| 1 | Fork foundation: build repo, CI, extension and core skeletons, one upstream sync | Built; full 3-OS IDE builds not yet run |
+| 0 | Decide and validate: interviews, ACP spike, vendor terms | Spike done; vendor terms read ([agent-terms](docs/agent-terms.md)); trademark search not needed (non-profit); interviews and G0 decision open |
+| 1 | Fork foundation: build repo, CI, extension and core skeletons, one upstream sync | Built; 3-OS IDE dev builds pass |
 | 2 | MVP: two agents in worktrees, symbol ownership, pre-merge conflicts, board, combined review | Built and tested with scripted agents |
 | 3 | Collaboration: task graph, structured handoffs, decision log, permission model | Built and tested with scripted agents |
-| 4 | Public beta: signing, auto-update, docs, onboarding, opt-in telemetry, community | Scaffolding built; needs certificates, an update host and a telemetry endpoint |
+| 4 | Public beta: signing, auto-update, docs, onboarding, community | Scaffolding built; needs certificates and an update host. No telemetry, by decision |
 | G3 | Decide on a standalone IDE | After month 6, on the numbers in the plan |
 
 ## Gates

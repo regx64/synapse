@@ -13,8 +13,10 @@ type BoardMessage =
   | { type: "taskAction"; id: string; action: "start" | "done" | "failed" | "todo" | "remove" }
   | { type: "sendMessage"; to: string; kind: "note"; subject: string; body?: string }
   | { type: "messageAction"; id: string; action: "release" | "reject" }
-  | { type: "addDecision"; title: string; decision: string; rationale?: string }
+  | { type: "addDecision"; title: string; decision: string; rationale?: string; pins?: string }
   | { type: "decisionAction"; id: string; status: "accepted" | "rejected" | "superseded" }
+  | { type: "decisionRepin"; id: string }
+  | { type: "decisionUnpin"; id: string; path: string; symbol?: string }
   | { type: "editPolicy"; agentId: string };
 
 /** The collaboration board: status, ownership and pending approvals of every agent. */
@@ -90,8 +92,21 @@ export class BoardProvider implements vscode.WebviewViewProvider, vscode.Disposa
         case "messageAction":
           await this.conn.call(m.action === "release" ? "messages.release" : "messages.reject", { id: m.id });
           return;
-        case "addDecision":
-          await this.conn.call("decisions.add", { title: m.title, decision: m.decision, rationale: m.rationale || undefined });
+        case "addDecision": {
+          // "path#Symbol, other/path" → pins
+          const pins = (m.pins ?? "")
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean)
+            .map((s) => (s.lastIndexOf("#") > 0 ? { path: s.slice(0, s.lastIndexOf("#")), symbol: s.slice(s.lastIndexOf("#") + 1) } : { path: s }));
+          await this.conn.call("decisions.add", { title: m.title, decision: m.decision, rationale: m.rationale || undefined, pins: pins.length ? pins : undefined });
+          return;
+        }
+        case "decisionRepin":
+          await this.conn.call("decisions.repin", { id: m.id });
+          return;
+        case "decisionUnpin":
+          await this.conn.call("decisions.unpin", { id: m.id, path: m.path, symbol: m.symbol });
           return;
         case "decisionAction":
           await this.conn.call("decisions.resolve", { id: m.id, status: m.status });

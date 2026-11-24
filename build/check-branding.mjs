@@ -12,7 +12,7 @@ for (const k of identityKeys) {
   if (!product[k]) problems.push(`product.json is missing ${k}`);
   else if (forbidden.test(String(product[k]))) problems.push(`product.json ${k} uses a Microsoft name: ${product[k]}`);
 }
-if (product.enableTelemetry !== false) problems.push("product.json must set enableTelemetry to false (telemetry is opt-in, phase 4)");
+if (product.enableTelemetry !== false) problems.push("product.json must set enableTelemetry to false (Synapse collects no data)");
 if (!/open-vsx\.org/.test(product.extensionsGallery?.serviceUrl ?? "")) problems.push("extensionsGallery must point at Open VSX (Marketplace terms, risk L1)");
 if (/marketplace\.visualstudio\.com/.test(JSON.stringify(product))) problems.push("product.json must not reference the Visual Studio Marketplace");
 if (!fs.readFileSync(path.join(ROOT, "LICENSE"), "utf8").startsWith("MIT License")) problems.push("LICENSE must be the MIT license");
@@ -29,6 +29,12 @@ if (fs.existsSync(resDir)) {
 if (fs.existsSync(path.join(VSCODE, "product.json"))) {
   const shipped = readJson(path.join(VSCODE, "product.json"));
   if (shipped.nameLong !== product.nameLong) problems.push("vscode/product.json is not prepared (run node build/prepare.mjs)");
+  // Synapse collects no data: none of upstream's collection endpoints may ship.
+  // (telemetry and experiments, crash uploads, surveys, AI-backed settings search, settings sync)
+  if (shipped.enableTelemetry !== false) problems.push("vscode/product.json: enableTelemetry must be false");
+  for (const k of ["aiConfig", "tasConfig", "appCenter", "crashReporter", "surveys", "npsSurveyUrl", "cesSurveyUrl", "configurationSync.store", "editSessions.store", "telemetryEndpoint"]) {
+    if (k in shipped) problems.push(`vscode/product.json must not set ${k} (data collection)`);
+  }
   for (const f of ["LICENSE.txt", "ThirdPartyNotices.txt"]) if (!fs.existsSync(path.join(VSCODE, f))) problems.push(`vscode/${f} is missing: upstream notices must ship`);
   // Every upstream icon must have been replaced with Synapse's.
   const overlay = readJson(path.join(ROOT, "resources", "generated", "overlay.json"));

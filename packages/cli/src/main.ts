@@ -52,8 +52,11 @@ Messages and decisions
   message send <agent|all> <subject> [--body TEXT] [--kind handoff|question|answer|note|blocker]
   message release|reject <id>        held (flagged) messages
   decisions                          the shared decision log
-  decision add <title> --decision TEXT [--rationale TEXT] [--tags a,b]
+  decision add <title> --decision TEXT [--rationale TEXT] [--tags a,b] [--pin path[#Symbol],...]
   decision accept|reject|supersede <id>
+  decision pin <id> <path>[#Symbol]  pin to code; flagged when that code changes
+  decision unpin <id> <path>[#Symbol]
+  decision repin <id>                the decision still holds for the code as it is now
 
 Permissions
   policy <agent>                     show an agent's policy
@@ -61,8 +64,6 @@ Permissions
   policy <agent> --try CMD           what the policy decides for a command
   audit [--agent ID] [--limit N]     what agents ran, and who allowed it
 
-Telemetry (off by default)
-  telemetry status|enable|disable|preview [--endpoint URL]
 
 Review
   review [--agents a,b] [--no-tests] combine agents' work, test it, show the result
@@ -108,10 +109,10 @@ async function main(argv: string[]): Promise<number> {
       kind: { type: "string" },
       body: { type: "string" },
       decision: { type: "string" },
+      pin: { type: "string" },
       rationale: { type: "string" },
       tags: { type: "string" },
       set: { type: "string" },
-      endpoint: { type: "string" },
       limit: { type: "string" },
     },
   });
@@ -343,7 +344,13 @@ async function run(c: SynapseClient, cmd: string, sub: string | undefined, rest:
     }
     case "decisions": {
       const list = await c.call("decisions.list");
-      out(list, () => (list.length ? list.map((d) => `  ${d.id.padEnd(5)} [${d.status}] ${d.title}: ${d.decision}${d.author !== "human" ? `  (by ${d.author})` : ""}`).join("\n") : "no decisions"));
+      const mark = { current: "", changed: "  ⚠ code changed", missing: "  ⚠ gone from base" };
+      const line = (d: (typeof list)[number]) =>
+        [
+          `  ${d.id.padEnd(5)} [${d.status}] ${d.title}: ${d.decision}${d.author !== "human" ? `  (by ${d.author})` : ""}`,
+          ...(d.anchors ?? []).map((a) => `        pinned: ${a.path}${a.symbol ? `#${a.symbol}` : ""}${mark[a.state]}`),
+        ].join("\n");
+      out(list, () => (list.length ? list.map(line).join("\n") : "no decisions"));
       return 0;
     }
     case "decision": {
@@ -354,8 +361,20 @@ async function run(c: SynapseClient, cmd: string, sub: string | undefined, rest:
           decision: need(v.decision as string | undefined, "--decision"),
           rationale: v.rationale as string | undefined,
           tags: typeof v.tags === "string" ? v.tags.split(",") : undefined,
+          pins: typeof v.pin === "string" ? v.pin.split(",").map(pinSpec) : undefined,
         });
-        out(d, () => `${d.id}: ${d.status}`);
+        out(d, () => `${d.id}: ${d.status}${d.anchors?.length ? `, pinned to ${d.anchors.length} place(s)` : ""}`);
+        return 0;
+      }
+      if (action === "pin" || action === "unpin") {
+        const pin = pinSpec(need(rest[1], "path[#Symbol]"));
+        const d = await c.call(action === "pin" ? "decisions.pin" : "decisions.unpin", { id: need(rest[0], "decision id"), ...pin });
+        out(d, () => `${d.id}: ${action === "pin" ? "pinned to" : "unpinned from"} ${pin.path}${pin.symbol ? `#${pin.symbol}` : ""}`);
+        return 0;
+      }
+      if (action === "repin") {
+        const d = await c.call("decisions.repin", { id: need(rest[0], "decision id") });
+        out(d, () => `${d.id}: confirmed for the code on the base branch now (${d.anchors?.length ?? 0} pin(s))`);
         return 0;
       }
       const status = { accept: "accepted", reject: "rejected", supersede: "superseded" }[action] as "accepted" | undefined;
@@ -388,22 +407,6 @@ async function run(c: SynapseClient, cmd: string, sub: string | undefined, rest:
           ? list.map((e) => `  ${e.at.slice(11, 19)} ${e.agentId.padEnd(8)} ${e.outcome.padEnd(11)} by ${e.by.padEnd(6)} ${e.risky ? "RISKY " : ""}${e.command ?? e.path ?? e.title}${e.rule ? `  (${e.rule})` : ""}`).join("\n")
           : "audit log is empty",
       );
-      return 0;
-    }
-    case "telemetry": {
-      const action = sub ?? "status";
-      if (action === "preview") {
-        const events = await c.call("telemetry.preview");
-        out(events, () => (events.length ? JSON.stringify(events, null, 2) : "nothing queued"));
-        return 0;
-      }
-      const s =
-        action === "enable"
-          ? await c.call("telemetry.setEnabled", { enabled: true, endpoint: v.endpoint as string | undefined })
-          : action === "disable"
-            ? await c.call("telemetry.setEnabled", { enabled: false })
-            : await c.call("telemetry.status");
-      out(s, () => `telemetry ${s.enabled ? "on" : "off"}; endpoint ${s.endpoint || "(none: kept local)"}; queued ${s.queued}, sent ${s.sent}; crash reports ${s.crashReports}; settings ${s.file}`);
       return 0;
     }
     case "merge": {
@@ -518,3 +521,9 @@ main(process.argv.slice(2)).then(
     process.exit(1);
   },
 );
+
+/** "path" or "path#Symbol". */
+function pinSpec(spec: string): { path: string; symbol?: string } {
+  const at = spec.lastIndexOf("#");
+  return at > 0 ? { path: spec.slice(0, at), symbol: spec.slice(at + 1) } : { path: spec };
+}

@@ -7,6 +7,12 @@
       "owner": "@regx64",
       "reason": "Upstream hard-codes 'Microsoft Corporation', a Microsoft copyright and code.visualstudio.com in the Windows/macOS file version info (main executable, bundled native binaries, server) and the Windows installer's publisher fields; build scripts are outside the extension API. The patch reads companyName, copyright and publisherUrl from product.json, falling back to upstream's values.",
       "since": "1.147.0"
+    },
+    {
+      "file": "0002-remove-builtin-copilot.patch",
+      "owner": "@regx64",
+      "reason": "Code - OSS 1.147 builds the GitHub Copilot extension, the Copilot CLI runtime and SDK native packages, and a `copilot` CLI shim into every app from its gulp build; an extension cannot stop that. The patch drops them from the desktop build and makes chat.disableAIFeatures default to true, so the Copilot-based chat setup and the agent host (which needs the SDK) stay off.",
+      "since": "1.147.0"
     }
   ]
 }

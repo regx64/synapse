@@ -119,3 +119,7 @@ pre.detail { font-size: 11px; max-height: 10em; overflow: auto; margin: 0; backg
 .audit.risky { background: var(--vscode-inputValidation-warningBackground); }
 .out-denied { color: var(--vscode-errorForeground); }
 .out-ran-unasked { color: var(--vscode-charts-orange, #d18616); }
+.anchors { margin: 4px 0; padding: 4px 6px; border-left: 2px solid var(--vscode-textLink-foreground); }
+.anchors.stale { border-left-color: var(--vscode-inputValidation-warningBorder); background: var(--vscode-inputValidation-warningBackground); }
+.anchors .anchor { font-family: var(--vscode-editor-font-family); }
+.badge.warn { background: var(--vscode-inputValidation-warningBorder); color: var(--vscode-editor-background); }

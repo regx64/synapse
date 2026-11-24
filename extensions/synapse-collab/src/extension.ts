@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import * as path from "node:path";
 import * as vscode from "vscode";
 import type { AgentState } from "@synapse/client";
 import { BoardProvider } from "./board.js";
@@ -179,32 +180,34 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     await vscode.languages.setTextDocumentLanguage(doc, "jsonc");
     await vscode.window.showTextDocument(doc);
   });
+  register("synapse.pinDecision", async () => {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor) return;
+    const rel = path.relative(repoRoot, editor.document.uri.fsPath).split(path.sep).join("/");
+    if (!rel || rel.startsWith("..") || path.isAbsolute(rel)) {
+      void vscode.window.showWarningMessage("Synapse: open a file of this repository (not an agent's worktree) to pin a decision.");
+      return;
+    }
+    const decisions = (conn.state?.decisions ?? []).filter((d) => d.status === "accepted" || d.status === "proposed");
+    if (!decisions.length) {
+      void vscode.window.showInformationMessage("Synapse: record a decision on the board's Decisions tab first.");
+      return;
+    }
+    const pick = await vscode.window.showQuickPick(
+      decisions.map((d) => ({ label: `${d.id} · ${d.title}`, description: d.status === "proposed" ? "proposed" : "", detail: d.decision, id: d.id })),
+      { placeHolder: "Pin which decision to the code at the cursor?" },
+    );
+    if (!pick) return;
+    const d = await conn.call("decisions.pin", { id: pick.id, path: rel, line: editor.selection.active.line });
+    const a = d.anchors?.at(-1);
+    void vscode.window.showInformationMessage(`Synapse: ${d.id} pinned to ${a?.symbol ?? a?.path ?? rel}. You'll be told when that code changes.`);
+  });
   register("synapse.newTask", async () => {
     const title = await vscode.window.showInputBox({ prompt: "Task title" });
     if (!title) return;
     const agent = await pickAgent(undefined);
     const t = await conn.call("tasks.create", { title, agentId: agent });
     void vscode.window.showInformationMessage(`Synapse: created ${t.id}. Add details and dependencies on the board's Tasks tab.`);
-  });
-  register("synapse.telemetry", async () => {
-    const s = await conn.call("telemetry.status");
-    const pick = await vscode.window.showQuickPick(
-      [
-        s.enabled
-          ? { label: "$(circle-slash) Turn telemetry off", action: "off" }
-          : { label: "$(check) Turn telemetry on", description: "anonymous counts only: no code, paths, prompts or messages", action: "on" },
-        { label: "$(eye) Show exactly what would be sent", action: "preview" },
-      ],
-      { placeHolder: `Telemetry is ${s.enabled ? "on" : "off"}${s.endpoint ? ` (sends to ${s.endpoint})` : " (no endpoint: kept on this machine)"}. ${s.crashReports} crash report(s) stored locally.` },
-    );
-    if (!pick) return;
-    if (pick.action === "preview") {
-      const doc = await vscode.workspace.openTextDocument({ language: "json", content: JSON.stringify(await conn.call("telemetry.preview"), null, 2) });
-      await vscode.window.showTextDocument(doc);
-      return;
-    }
-    const next = await conn.call("telemetry.setEnabled", { enabled: pick.action === "on" });
-    void vscode.window.showInformationMessage(`Synapse: telemetry ${next.enabled ? "on" : "off"}.`);
   });
   register("synapse.initConfig", async () => {
     const uri = vscode.Uri.joinPath(vscode.Uri.file(repoRoot), "synapse.config.json");

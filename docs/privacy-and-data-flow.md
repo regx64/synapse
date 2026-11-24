@@ -1,8 +1,10 @@
 # Privacy and data flow
 
 For people evaluating Synapse for company use (risk C5). Short version:
-**Synapse itself sends nothing anywhere by default.** Your code goes only to
-the agents you choose to run, under your own accounts.
+**Synapse collects nothing and sends nothing about you.** There is no
+telemetry, no install id and no crash upload, and the built-in GitHub
+Copilot is not shipped. Your code goes only to the agents you choose to run,
+under your own accounts.
 
 ## Where data goes
 
@@ -12,28 +14,16 @@ the agents you choose to run, under your own accounts.
 | Collaboration state (agents, tasks, messages, decisions, ownership, audit) | `.synapse/` in your repository, on your machine | Always. Not sent anywhere |
 | Decision log Markdown | `decisionLogPath` in your repository | When decisions change. You decide whether to commit it |
 | Core log | `.synapse/core.log` | Always. Known secret formats are masked |
-| Crash reports | `~/.synapse-ide/crash-reports/` | When the core crashes. Redacted (secrets masked, home directory replaced by `~`). Stay local unless telemetry is on |
-| Telemetry events | The configured endpoint | Only after you opt in **and** an endpoint is set |
-| Extensions | Downloaded from open-vsx.org | When you install or update extensions |
-| Code - OSS itself | Microsoft telemetry endpoints | Never: Synapse ships with `enableTelemetry: false` and no telemetry keys |
+| Crash reports | `~/.synapse-ide/crash-reports/` | When the core crashes. Redacted (secrets masked, home directory replaced by `~`). Never sent; attach one to a bug report yourself if you want |
+| Extensions | open-vsx.org | When you search, install or update extensions (Open VSX sees which extensions are asked for) |
+| Code - OSS itself | Microsoft telemetry, experiments, crash upload, surveys, settings sync | Never. Synapse ships with `enableTelemetry: false` and none of those endpoints; `build/check-branding.mjs` fails the build if one appears |
+| GitHub Copilot | GitHub | Never: it is not in the build (core patch 0002), and the editor's built-in AI features are off by default |
 
-## Telemetry, when you opt in
+## No telemetry
 
-Recorded: counts and enums only, for example `agent.added {preset: "claude"}`,
-`conflicts {signature-change: 1}`, `review.merged {agents: 2, files: 5,
-testsPassed: true}`, `policy.decision {outcome: "denied"}`. Plus a random
-install id, the Synapse version, OS and architecture.
-
-Never recorded: code, file paths, prompts, messages, agent output, commands,
-repository names, user names.
-
-```bash
-synapse telemetry preview
-```
-
-shows the exact queue that would be sent. `synapse telemetry disable` drops
-it. There is no Synapse telemetry server yet: until one exists and you set its
-endpoint, enabling telemetry only collects locally.
+Synapse used to have opt-in usage counts; they were removed. The core has no
+telemetry API, records no usage events and keeps no install id. The only
+per-user files it writes are crash reports, and only when it crashes.
 
 ## Choosing where code goes
 

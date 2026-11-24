@@ -246,6 +246,24 @@ export function moduleMatches(fromPath: string, source: string, targetPath: stri
   return true;
 }
 
+// Snapshots are deterministic commits, so a pair of them always merges the same way.
+const mergeCache = new Map<string, { clean: boolean; paths: string[] } | null>();
+const MERGE_CACHE_LIMIT = 500;
+
+async function predictCached(repoRoot: string, a: string, b: string): Promise<{ clean: boolean; paths: string[] } | null> {
+  const key = a < b ? `${a}|${b}` : `${b}|${a}`;
+  if (mergeCache.has(key)) return mergeCache.get(key)!;
+  let r: { clean: boolean; paths: string[] } | null;
+  try {
+    r = await predictMergeConflicts(repoRoot, a, b);
+  } catch {
+    r = null; // unrelated histories or old git: skip
+  }
+  mergeCache.set(key, r);
+  if (mergeCache.size > MERGE_CACHE_LIMIT) mergeCache.delete(mergeCache.keys().next().value!);
+  return r;
+}
+
 /** Predicts textual merge conflicts for every pair of agents that touch a common file. */
 export async function computeTextConflicts(repoRoot: string, ownership: AgentOwnership[]): Promise<Map<string, string[]>> {
   const result = new Map<string, string[]>();
@@ -256,12 +274,8 @@ export async function computeTextConflicts(repoRoot: string, ownership: AgentOwn
       if (!a.snapshot || !b.snapshot) continue;
       const aPaths = new Set(a.files.map((f) => f.path));
       if (!b.files.some((f) => aPaths.has(f.path))) continue;
-      try {
-        const r = await predictMergeConflicts(repoRoot, a.snapshot, b.snapshot);
-        if (!r.clean) result.set(pairKey(a.agentId, b.agentId), r.paths);
-      } catch {
-        /* unrelated histories or old git: skip */
-      }
+      const r = await predictCached(repoRoot, a.snapshot, b.snapshot);
+      if (r && !r.clean) result.set(pairKey(a.agentId, b.agentId), r.paths);
     }
   }
   return result;

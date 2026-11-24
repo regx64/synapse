@@ -116,13 +116,20 @@ export class AgentManager {
       const wt = await this.deps.worktrees.create(id, agent.worktree.baseRef);
       this.store.updateAgent(id, { worktree: wt });
     }
+    const env: Record<string, string> = { ...this.store.getAgentEnv(id), SYNAPSE_AGENT_ID: id };
+    const required = this.deps.presets().find((p) => p.id === agent.preset)?.requiresEnv;
+    if (required && !required.anyOf.some((k) => env[k] || process.env[k])) {
+      const message = `${agent.name} needs one of ${required.anyOf.join(", ")}. ${required.reason}`;
+      this.store.updateAgent(id, { status: "error", error: message });
+      throw new RpcError(ErrorCodes.InvalidParams, message);
+    }
     this.store.updateAgent(id, { status: "starting", error: undefined });
     const proc = new AcpAgentProcess(
       {
         command: agent.command,
         args: agent.args,
         cwd: agent.worktree.path,
-        env: { ...this.store.getAgentEnv(id), SYNAPSE_AGENT_ID: id },
+        env,
         clientVersion: CORE_API_VERSION,
         label: agent.name,
       },

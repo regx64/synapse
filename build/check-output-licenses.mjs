@@ -6,12 +6,13 @@
 //     that file; with --fix, a missing one is copied from the same package
 //     version in the Code - OSS checkout;
 //   - upstream's LICENSE and ThirdPartyNotices, and Synapse's extension
-//     notices, must be in the app.
+//     notices, must be in the app;
+//   - no part of the built-in GitHub Copilot may be in the app (patch 0002).
 //
 //   node build/check-output-licenses.mjs <VSCode-platform-arch> [--fix] [--json]
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { VSCODE } from "./lib.mjs";
+import { VSCODE, findAppRoot } from "./lib.mjs";
 
 const args = process.argv.slice(2);
 const fix = args.includes("--fix");
@@ -20,18 +21,6 @@ const outDir = args.find((a) => !a.startsWith("--"));
 if (!outDir || !fs.existsSync(outDir)) {
   console.error("usage: node build/check-output-licenses.mjs <built app folder> [--fix] [--json]");
   process.exit(2);
-}
-
-/** The app's resources/app folder (macOS: <Name>.app/Contents/Resources/app; Windows: may sit in a versioned folder). */
-function findAppRoot(dir, depth = 0) {
-  if (depth > 6) return undefined;
-  if (path.basename(dir) === "app" && path.basename(path.dirname(dir)).toLowerCase() === "resources" && fs.existsSync(path.join(dir, "package.json"))) return dir;
-  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
-    if (!e.isDirectory() || e.isSymbolicLink() || e.name === "node_modules") continue;
-    const found = findAppRoot(path.join(dir, e.name), depth + 1);
-    if (found) return found;
-  }
-  return undefined;
 }
 
 /** All package folders under any node_modules below `dir`. */
@@ -108,6 +97,13 @@ for (const dir of packages(appRoot)) {
     problems.push(`${pkg.name}@${pkg.version} (${rel}) is distributed under "${pkg.license}" but ${file} is not in the app`);
   }
 }
+
+// Synapse does not ship the built-in GitHub Copilot (patch 0002).
+for (const dir of packages(appRoot)) {
+  const rel = path.relative(appRoot, dir).split(path.sep).join("/");
+  if (/(^|\/)node_modules\/@github\/copilot/.test(rel)) problems.push(`${rel} is in the app, but Synapse does not ship GitHub Copilot`);
+}
+if (fs.existsSync(path.join(appRoot, "extensions", "copilot"))) problems.push("extensions/copilot is in the app, but Synapse does not ship GitHub Copilot");
 
 // Notices that must ship. Upstream keeps them next to the app folder or above it.
 const searchUp = (start, file) => {

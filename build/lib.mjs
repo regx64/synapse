@@ -19,6 +19,18 @@ export const VSCODE = process.env.SYNAPSE_VSCODE_DIR ? path.resolve(process.env.
 }
 /** Where the upstream build writes the app: next to the Code - OSS checkout. */
 export const buildOutput = (platform, arch) => path.join(path.dirname(VSCODE), `VSCode-${platform}-${arch}`);
+/** The built app's resources/app folder (macOS: <Name>.app/Contents/Resources/app; Windows: may sit in a versioned folder). */
+export function findAppRoot(dir, depth = 0) {
+  if (depth > 6) return undefined;
+  if (path.basename(dir) === "app" && path.basename(path.dirname(dir)).toLowerCase() === "resources" && fs.existsSync(path.join(dir, "package.json"))) return dir;
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (!e.isDirectory() || e.isSymbolicLink() || e.name === "node_modules") continue;
+    const found = findAppRoot(path.join(dir, e.name), depth + 1);
+    if (found) return found;
+  }
+  return undefined;
+}
+
 export const readJson = (p) => JSON.parse(fs.readFileSync(p, "utf8"));
 export const writeJson = (p, v) => fs.writeFileSync(p, JSON.stringify(v, null, "\t") + "\n");
 export const upstream = () => readJson(path.join(ROOT, "build", "upstream.json"));
