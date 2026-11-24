@@ -85,8 +85,12 @@ try {
   const page = await app.firstWindow({ timeout: 120_000 });
   await page.waitForSelector(".monaco-workbench", { timeout: 120_000 });
   check("workbench opens", true);
+  const appName = await app.evaluate(({ app: electronApp }) => electronApp.getName());
+  check("the app calls itself Synapse", appName === product.nameShort, appName);
+  // macOS window titles show only the folder, never the app name.
   const title = await page.title();
-  check("window title names Synapse", /Synapse/.test(title) && !/Visual Studio Code|VS Code/.test(title), title);
+  const titleOk = !/Visual Studio Code|VS Code/.test(title) && (process.platform === "darwin" || title.includes(product.nameShort));
+  check("window title", titleOk, title);
 
   // The built-in extension starts synapse-core for the open repository.
   const coreFile = path.join(repo, ".synapse", "core.json");
