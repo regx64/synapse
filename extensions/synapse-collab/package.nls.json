@@ -67,7 +67,7 @@
   "color.statusError": "Synapse: a conflict or an error.",
   "color.statusIdle": "Synapse: an agent is idle.",
   "config.workbenchFont": "Use Synapse's font (Pretendard) for the workbench. Off: the system font.",
-  "config.autoHideAgentColumn": "Hide the agent column (secondary side bar) when the window is narrower than 1280 pixels, and show it again when it is wider. Opening it by hand keeps it open.",
+  "config.autoHideAgentColumn": "Hide the agent column (secondary side bar) when the window is narrower than 1280 pixels, and show it again when it is wider. Opened in a narrow window, it shows as a drawer over the editor area.",
   "cmd.selectAgent": "Select Agent",
   "cmd.nextAgent": "Next Agent",
   "cmd.previousAgent": "Previous Agent",

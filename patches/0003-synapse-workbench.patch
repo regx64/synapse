@@ -1,9 +1,9 @@
 diff --git a/src/vs/workbench/contrib/synapse/electron-browser/synapse.contribution.ts b/src/vs/workbench/contrib/synapse/electron-browser/synapse.contribution.ts
 new file mode 100644
-index 00000000..c6ccdc45
+index 00000000..a4ec860c
 --- /dev/null
 +++ b/src/vs/workbench/contrib/synapse/electron-browser/synapse.contribution.ts
-@@ -0,0 +1,259 @@
+@@ -0,0 +1,316 @@
 +/*---------------------------------------------------------------------------------------------
 + *  Copyright (c) The Synapse contributors. Licensed under the MIT License.
 + *--------------------------------------------------------------------------------------------*/
@@ -11,7 +11,7 @@ index 00000000..c6ccdc45
 +// The workbench half of Synapse's UI; the rest is the built-in synapse-collab
 +// extension. It adds what an extension cannot: the agents' status in the
 +// title bar, desktop notifications, the Synapse fonts in the workbench, and
-+// keeping the agent column out of the way in narrow windows.
++// the agent column as a drawer in narrow windows.
 +
 +import { $, append, clearNode } from '../../../../base/browser/dom.js';
 +import { asCSSUrl } from '../../../../base/browser/cssValue.js';
@@ -32,7 +32,7 @@ index 00000000..c6ccdc45
 +import { IWorkbenchContribution, WorkbenchPhase, registerWorkbenchContribution2 } from '../../../common/contributions.js';
 +import { INativeWorkbenchEnvironmentService } from '../../../services/environment/electron-browser/environmentService.js';
 +import { IHostService } from '../../../services/host/browser/host.js';
-+import { IWorkbenchLayoutService, Parts } from '../../../services/layout/browser/layoutService.js';
++import { IPartVisibilityChangeEvent, IWorkbenchLayoutService, Parts } from '../../../services/layout/browser/layoutService.js';
 +
 +/** What the extension reports for the title bar. Labels come already translated. */
 +interface ISynapseTitleStatus {
@@ -179,6 +179,11 @@ index 00000000..c6ccdc45
 +
 +	private lastWidth: number | undefined;
 +	private autoHidden = false;
++	/** The agent column is open over the editor area in a narrow window. */
++	private drawer = false;
++	/** Set while this contribution changes the layout itself. */
++	private changing = false;
++	private readonly createdAt = Date.now();
 +
 +	constructor(
 +		@IActionViewItemService actionViewItemService: IActionViewItemService,
@@ -194,6 +199,7 @@ index 00000000..c6ccdc45
 +		this.installStyles(environmentService);
 +
 +		this._register(layoutService.onDidLayoutMainContainer(dimension => this.onLayout(dimension.width)));
++		this._register(layoutService.onDidChangePartVisibility(e => this.onPartVisibility(e)));
 +		if (layoutService.mainContainerDimension.width > 0) {
 +			this.onLayout(layoutService.mainContainerDimension.width);
 +		}
@@ -221,6 +227,7 @@ index 00000000..c6ccdc45
 +@keyframes synapse-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
 +.monaco-workbench.reduce-motion .synapse-title-status .dot { animation: none; }
 +@media (prefers-reduced-motion: reduce) { .synapse-title-status .dot { animation: none; } }
++.monaco-workbench.synapse-drawer .part.auxiliarybar { box-shadow: -16px 0 32px rgba(0, 0, 0, 0.35); }
 +`;
 +		const applyFont = () => this.layoutService.mainContainer.classList.toggle('synapse-system-font', this.configurationService.getValue('synapse.workbenchFont') === false);
 +		applyFont();
@@ -231,10 +238,56 @@ index 00000000..c6ccdc45
 +		}));
 +	}
 +
++	private get enabled(): boolean {
++		return this.configurationService.getValue('synapse.autoHideAgentColumn') !== false;
++	}
++
++	/** Changes the layout without reacting to the change. */
++	private change(fn: () => void): void {
++		this.changing = true;
++		try {
++			fn();
++		} finally {
++			this.changing = false;
++		}
++	}
++
++	private setDrawer(on: boolean): void {
++		this.drawer = on;
++		this.layoutService.mainContainer.classList.toggle('synapse-drawer', on);
++	}
++
 +	/**
-+	 * In a narrow window the agent column hides itself when the window gets
-+	 * narrow, and comes back when it is wide again. Opening it by hand while
-+	 * the window is narrow keeps it open.
++	 * Opening the agent column in a narrow window shows it as a drawer over
++	 * the editor area (the column maximized); it goes back to a column when
++	 * the window is wide again or the column is closed. While the window
++	 * starts up (layout restore, the extension's first run) a narrow window
++	 * keeps the column hidden instead.
++	 */
++	private onPartVisibility(e: IPartVisibilityChangeEvent): void {
++		if (e.partId !== Parts.AUXILIARYBAR_PART || this.changing || !this.enabled) {
++			return;
++		}
++		if (!e.visible) {
++			this.setDrawer(false);
++			return;
++		}
++		if ((this.lastWidth ?? NARROW_WIDTH) >= NARROW_WIDTH) {
++			return;
++		}
++		if (Date.now() - this.createdAt < 10_000) {
++			this.autoHidden = true;
++			this.change(() => this.layoutService.setPartHidden(true, Parts.AUXILIARYBAR_PART));
++			return;
++		}
++		this.autoHidden = false;
++		this.change(() => this.layoutService.setAuxiliaryBarMaximized(true));
++		this.setDrawer(true);
++	}
++
++	/**
++	 * The agent column hides itself when the window gets narrow and comes
++	 * back when it is wide again; a drawer goes back to a column.
 +	 */
 +	private onLayout(width: number): void {
 +		if (width <= 0) {
@@ -249,13 +302,17 @@ index 00000000..c6ccdc45
 +		if (this.autoHidden && visible) {
 +			this.autoHidden = false; // opened by hand
 +		}
-+		if (width < NARROW_WIDTH && wasWide && visible) {
++		if (width >= NARROW_WIDTH && this.drawer) {
++			this.change(() => this.layoutService.setAuxiliaryBarMaximized(false));
++			this.setDrawer(false);
++		}
++		if (width < NARROW_WIDTH && wasWide && visible && !this.drawer) {
 +			this.autoHidden = true;
-+			this.layoutService.setPartHidden(true, Parts.AUXILIARYBAR_PART);
++			this.change(() => this.layoutService.setPartHidden(true, Parts.AUXILIARYBAR_PART));
 +		} else if (width >= NARROW_WIDTH && this.autoHidden) {
 +			this.autoHidden = false;
 +			if (!visible) {
-+				this.layoutService.setPartHidden(false, Parts.AUXILIARYBAR_PART);
++				this.change(() => this.layoutService.setPartHidden(false, Parts.AUXILIARYBAR_PART));
 +			}
 +		}
 +		this.lastWidth = width;

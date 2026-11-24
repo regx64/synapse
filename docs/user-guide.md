@@ -27,8 +27,9 @@ Synapse puts the agents first, in three columns:
 The activity bar, status bar, layout controls and minimap are hidden by
 default; turn them back on in Settings (`workbench.activityBar.location`,
 `workbench.statusBar.visible`…). Below 1280 pixels the agent column hides
-itself and comes back when the window is wider
-(`synapse.autoHideAgentColumn`). The theme is **Synapse Dark**; the
+itself and comes back when the window is wider; opened in a narrow window,
+it shows as a drawer over the editor area until the window is wide again or
+you close it (`synapse.autoHideAgentColumn` turns both off). The theme is **Synapse Dark**; the
 workbench uses Pretendard and editors JetBrains Mono (both ship with
 Synapse; `synapse.workbenchFont` turns the workbench font off). Synapse
 follows the editor's language: English or Korean (the Korean language pack
