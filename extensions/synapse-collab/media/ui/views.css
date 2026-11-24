@@ -115,3 +115,12 @@
 .cmt.resolved { opacity: 0.6; }
 .cmt.outdated { border-style: dashed; }
 .cmt.form textarea { margin: 4px 0; }
+
+/* ---------------------------------------------------------------- review & merge */
+.review-page { min-height: 100vh; background: var(--sy-bg); }
+.review-page .page { max-width: 980px; margin: 0 auto; padding: 22px 28px 48px; gap: 14px; }
+.review-page h2 { margin-top: 8px; }
+.review-page .file { width: 100%; }
+.review-page .file:hover { background: var(--sy-hover); }
+.review-page .output { max-height: 280px; overflow: auto; }
+.review-page .blocked { gap: 12px; }

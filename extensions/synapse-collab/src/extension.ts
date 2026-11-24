@@ -16,7 +16,7 @@ import { HomePanel } from "./views/home.js";
 
 /**
  * Synapse's built-in extension. It is a client of synapse-core and nothing
- * more: the board, editor markers, diagnostics and review panel render core
+ * more: the home tab, agent views, editor markers, diagnostics and review panel render core
  * state, and every action is a core API call.
  */
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
@@ -95,23 +95,23 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     const presets = await conn.call("agents.presets");
     const pick = await vscode.window.showQuickPick(
       [...presets.map((p) => ({ label: p.name, description: `${p.command} ${p.args.join(" ")}`, detail: p.notes, preset: p.id })), { label: "Custom command…", preset: "" }],
-      { placeHolder: "Which agent? Each one gets its own git worktree." },
+      { placeHolder: l("Which agent? Each one gets its own git worktree.") },
     );
     if (!pick) return;
     let command: string | undefined;
     let args: string[] | undefined;
     let id: string | undefined;
     if (!pick.preset) {
-      const line = await vscode.window.showInputBox({ prompt: "Command that starts an ACP agent on stdio", placeHolder: "my-agent --acp" });
+      const line = await vscode.window.showInputBox({ prompt: l("Command that starts an ACP agent on stdio"), placeHolder: "my-agent --acp" });
       if (!line) return;
       [command, ...args] = line.split(/\s+/);
-      id = await vscode.window.showInputBox({ prompt: "Agent id (lowercase letters, digits, dashes)", value: "custom" });
+      id = await vscode.window.showInputBox({ prompt: l("Agent id (lowercase letters, digits, dashes)"), value: "custom" });
       if (!id) return;
     }
-    const agent = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: "Synapse: creating worktree and starting agent…" }, () =>
+    const agent = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: l("Synapse: creating worktree and starting agent…") }, () =>
       conn.call("agents.add", { preset: pick.preset || undefined, command, args, id, start: true }),
     );
-    void vscode.window.showInformationMessage(`Synapse: ${agent.name} is ${agent.status} in ${agent.worktree.branch}.`);
+    void vscode.window.showInformationMessage(l("Synapse: {0} is ready in {1}.", agent.name, agent.worktree.branch));
   });
 
   register("synapse.startAgent", async (id) => {
@@ -136,18 +136,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     if (!peer) return;
     const candidates = (state?.agents ?? []).filter((x) => x.status === "idle" && !x.currentTaskId && !(state?.ownership[x.id]?.files.length));
     if (!candidates.length) {
-      void vscode.window.showWarningMessage("Synapse: none of your agents can continue it. It needs a running, idle agent without changes of its own.");
+      void vscode.window.showWarningMessage(l("Synapse: none of your agents can continue it. It needs a running, idle agent without changes of its own."));
       return;
     }
     const to = await vscode.window.showQuickPick(
       candidates.map((x) => ({ label: x.name, id: x.id })),
-      { placeHolder: `Which of your agents continues ${peer.name}'s work${peer.task ? ` on "${peer.task}"` : ""}?` },
+      { placeHolder: peer.task ? l("Which of your agents continues {0}'s work on \"{1}\"?", peer.name, peer.task) : l("Which of your agents continues {0}'s work?", peer.name) },
     );
     if (!to) return;
-    const note = await vscode.window.showInputBox({ prompt: `Note for ${to.label} (optional)` });
+    const note = await vscode.window.showInputBox({ prompt: l("Note for {0} (optional)", to.label) });
     if (note === undefined) return;
     const r = await conn.call("team.adopt", { from: peer.id, to: to.id, note: note || undefined });
-    void vscode.window.showInformationMessage(`Synapse: ${r.to.name} continues ${peer.name}'s work (${r.files.length} file(s)). ${peer.person} will be told at the next sync.`);
+    void vscode.window.showInformationMessage(l("Synapse: {0} continues {1}'s work ({2} files). {3} will be told at the next sync.", r.to.name, peer.name, r.files.length, peer.person));
   });
   register("synapse.liveDiff", async (id) => {
     const a = await pickAgent(id);
@@ -156,14 +156,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   register("synapse.steerAgent", async (id) => {
     const a = await pickAgent(id, (x) => x.status === "working" || x.status === "awaiting-approval");
     if (!a) return;
-    const text = await vscode.window.showInputBox({ prompt: "Guidance for the agent while it works", placeHolder: "e.g. Keep the public API unchanged" });
+    const text = await vscode.window.showInputBox({ prompt: l("Guidance for the agent while it works"), placeHolder: l("e.g. Keep the public API unchanged") });
     if (!text?.trim()) return;
     const when = await vscode.window.showQuickPick(
       [
-        { label: "$(clock) After this turn", description: "the agent finishes its turn, then continues with this", mode: "next" as const },
-        { label: "$(debug-pause) Interrupt now", description: "the turn stops and continues with this at once", mode: "now" as const },
+        { label: `$(clock) ${l("After this turn")}`, description: l("the agent finishes its turn, then continues with this"), mode: "next" as const },
+        { label: `$(debug-pause) ${l("Interrupt now")}`, description: l("the turn stops and continues with this at once"), mode: "now" as const },
       ],
-      { placeHolder: "When should the agent get it?" },
+      { placeHolder: l("When should the agent get it?") },
     );
     if (when) await conn.call("agents.steer", { id: a, text, mode: when.mode });
   });
@@ -173,29 +173,30 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     const state = conn.state;
     const candidates = (state?.agents ?? []).filter((x) => x.id !== from && x.status === "idle" && !x.currentTaskId && !(state?.ownership[x.id]?.files.length));
     if (!candidates.length) {
-      void vscode.window.showWarningMessage("Synapse: no agent can take over. It needs a running, idle agent without changes of its own.");
+      void vscode.window.showWarningMessage(l("Synapse: no agent can take over. It needs a running, idle agent without changes of its own."));
       return;
     }
     const to = await vscode.window.showQuickPick(
       candidates.map((x) => ({ label: x.name, description: x.agentInfo?.name ?? x.preset ?? "", id: x.id })),
-      { placeHolder: "Which agent continues this work? Its changes and task move to that agent." },
+      { placeHolder: l("Which agent continues this work? Its changes and task move to that agent.") },
     );
     if (!to) return;
-    const note = await vscode.window.showInputBox({ prompt: `Note for ${to.label} (optional)`, placeHolder: "e.g. The tests in cart.test.ts still fail" });
+    const note = await vscode.window.showInputBox({ prompt: l("Note for {0} (optional)", to.label), placeHolder: l("e.g. The tests in cart.test.ts still fail") });
     if (note === undefined) return;
     const r = await conn.call("agents.takeover", { from, to: to.id, note: note || undefined });
-    void vscode.window.showInformationMessage(`Synapse: ${r.to.name} took over ${r.task ? r.task.id : "the work"} from ${r.from?.name} (${r.files.length} file(s) moved).`);
+    void vscode.window.showInformationMessage(l("Synapse: {0} took over {1} from {2} ({3} files moved).", r.to.name, r.task ? r.task.id : l("the work"), r.from?.name ?? "", r.files.length));
   });
   register("synapse.removeAgent", async (id) => {
     const a = await pickAgent(id);
     if (!a) return;
-    const ok = await vscode.window.showWarningMessage(`Remove ${a}? Its worktree and branch are deleted, with any work not merged.`, { modal: true }, "Remove");
-    if (ok === "Remove") await conn.call("agents.remove", { id: a });
+    const remove = l("Remove");
+    const ok = await vscode.window.showWarningMessage(l("Remove {0}? Its worktree and branch are deleted, with any work not merged.", a), { modal: true }, remove);
+    if (ok === remove) await conn.call("agents.remove", { id: a });
   });
   register("synapse.promptAgent", async (id) => {
     const a = await pickAgent(id, (x) => x.status === "idle");
     if (!a) return;
-    const text = await vscode.window.showInputBox({ prompt: `Prompt for ${a}` });
+    const text = await vscode.window.showInputBox({ prompt: l("Prompt for {0}", a) });
     if (text) await conn.call("agents.prompt", { id: a, text });
   });
   register("synapse.openWorktree", async (id) => {
@@ -211,16 +212,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     const a = await pickAgent(id);
     if (!a) return;
     const items: { label: string; command: string }[] = [
-      { label: "$(comment) Send prompt…", command: "synapse.promptAgent" },
-      { label: "$(diff) Live changes and comments", command: "synapse.liveDiff" },
-      { label: "$(comment-discussion) Add guidance while it works…", command: "synapse.steerAgent" },
-      { label: "$(arrow-swap) Hand work off to another agent…", command: "synapse.takeover" },
-      { label: "$(debug-restart) Restart", command: "synapse.restartAgent" },
-      { label: "$(folder-opened) Open worktree in new window", command: "synapse.openWorktree" },
-      { label: "$(output) Show output", command: "synapse.showOutput" },
-      { label: "$(shield) Edit permission policy", command: "synapse.editPolicy" },
-      { label: "$(discard) Reset worktree to base", command: "synapse.resetAgent" },
-      { label: "$(trash) Remove agent", command: "synapse.removeAgent" },
+      { label: `$(comment) ${l("Send prompt…")}`, command: "synapse.promptAgent" },
+      { label: `$(diff) ${l("Live changes and comments")}`, command: "synapse.liveDiff" },
+      { label: `$(comment-discussion) ${l("Add guidance while it works…")}`, command: "synapse.steerAgent" },
+      { label: `$(arrow-swap) ${l("Hand work off to another agent…")}`, command: "synapse.takeover" },
+      { label: `$(debug-restart) ${l("Restart")}`, command: "synapse.restartAgent" },
+      { label: `$(folder-opened) ${l("Open worktree in new window")}`, command: "synapse.openWorktree" },
+      { label: `$(output) ${l("Show output")}`, command: "synapse.showOutput" },
+      { label: `$(shield) ${l("Edit permission policy")}`, command: "synapse.editPolicy" },
+      { label: `$(discard) ${l("Reset worktree to base")}`, command: "synapse.resetAgent" },
+      { label: `$(trash) ${l("Remove agent")}`, command: "synapse.removeAgent" },
     ];
     const pick = await vscode.window.showQuickPick(items, { placeHolder: a });
     if (pick) await vscode.commands.executeCommand(pick.command, a);
@@ -237,29 +238,29 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     if (!editor) return;
     const rel = path.relative(repoRoot, editor.document.uri.fsPath).split(path.sep).join("/");
     if (!rel || rel.startsWith("..") || path.isAbsolute(rel)) {
-      void vscode.window.showWarningMessage("Synapse: open a file of this repository (not an agent's worktree) to pin a decision.");
+      void vscode.window.showWarningMessage(l("Synapse: open a file of this repository (not an agent's worktree) to pin a decision."));
       return;
     }
     const decisions = (conn.state?.decisions ?? []).filter((d) => d.status === "accepted" || d.status === "proposed");
     if (!decisions.length) {
-      void vscode.window.showInformationMessage("Synapse: record a decision on the board's Decisions tab first.");
+      void vscode.window.showInformationMessage(l("Synapse: record a decision on the home tab's Decisions first."));
       return;
     }
     const pick = await vscode.window.showQuickPick(
       decisions.map((d) => ({ label: `${d.id} · ${d.title}`, description: d.status === "proposed" ? "proposed" : "", detail: d.decision, id: d.id })),
-      { placeHolder: "Pin which decision to the code at the cursor?" },
+      { placeHolder: l("Pin which decision to the code at the cursor?") },
     );
     if (!pick) return;
     const d = await conn.call("decisions.pin", { id: pick.id, path: rel, line: editor.selection.active.line });
     const a = d.anchors?.at(-1);
-    void vscode.window.showInformationMessage(`Synapse: ${d.id} pinned to ${a?.symbol ?? a?.path ?? rel}. You'll be told when that code changes.`);
+    void vscode.window.showInformationMessage(l("Synapse: {0} pinned to {1}. You'll be told when that code changes.", d.id, a?.symbol ?? a?.path ?? rel));
   });
   register("synapse.newTask", async () => {
-    const title = await vscode.window.showInputBox({ prompt: "Task title" });
+    const title = await vscode.window.showInputBox({ prompt: l("Task title") });
     if (!title) return;
     const agent = await pickAgent(undefined);
     const t = await conn.call("tasks.create", { title, agentId: agent });
-    void vscode.window.showInformationMessage(`Synapse: created ${t.id}. Add details and dependencies on the board's Tasks tab.`);
+    void vscode.window.showInformationMessage(l("Synapse: created {0}. Add details and dependencies on the home tab's Tasks.", t.id));
   });
   register("synapse.initConfig", async () => {
     const uri = vscode.Uri.joinPath(vscode.Uri.file(repoRoot), "synapse.config.json");
@@ -279,14 +280,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   register("synapse.resetAgent", async (id) => {
     const a = await pickAgent(id);
     if (!a) return;
-    const ok = await vscode.window.showWarningMessage(`Discard all of ${a}'s changes and reset its worktree to the base branch?`, { modal: true }, "Reset");
-    if (ok === "Reset") await conn.call("agents.reset", { id: a });
+    const reset = l("Reset");
+    const ok = await vscode.window.showWarningMessage(l("Discard all of {0}'s changes and reset its worktree to the base branch?", a), { modal: true }, reset);
+    if (ok === reset) await conn.call("agents.reset", { id: a });
   });
   register("synapse.checkConflicts", async () => {
     await conn.call("ownership.refresh", {});
     const list = await conn.call("conflicts.check");
     const n = list.filter((c) => c.severity !== "info").length;
-    void vscode.window.showInformationMessage(n ? `Synapse: ${n} conflict(s) between agents. See the board or Problems panel.` : "Synapse: no conflicts between agents.");
+    void vscode.window.showInformationMessage(n ? l("Synapse: {0} conflicts between agents. See the home tab or the Problems panel.", n) : l("Synapse: no conflicts between agents."));
   });
   register("synapse.prepareReview", async () => {
     const agents = conn.state?.agents ?? [];
@@ -294,15 +296,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     if (agents.length > 2) {
       const picks = await vscode.window.showQuickPick(
         agents.map((a) => ({ label: a.name, id: a.id, picked: true })),
-        { canPickMany: true, placeHolder: "Agents to combine" },
+        { canPickMany: true, placeHolder: l("Agents to combine") },
       );
       if (!picks?.length) return;
       selected = picks.map((p) => p.id);
     }
-    const review = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: "Synapse: merging agents' work and running tests…" }, () =>
+    const review = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: l("Synapse: merging agents' work and running tests…") }, () =>
       conn.call("review.prepare", { agents: selected }),
     );
-    ReviewPanel.show(conn, review);
+    ReviewPanel.show(conn, context.extensionUri, review);
   });
 
   // The three columns: agents on the left, home in the middle, the selected

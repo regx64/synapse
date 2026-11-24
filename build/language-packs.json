@@ -1,0 +1,12 @@
+{
+  "$comment": "Language packs built into Synapse (decided in the UI redesign: English and Korean). From Open VSX; each is pinned by version and sha256. The packs are MIT (microsoft/vscode-loc); their 'VS Code' mentions are renamed at build time like the rest of the UI. A pack older than the upstream editor still works: strings it lacks stay English.",
+  "packs": [
+    {
+      "language": "ko",
+      "id": "MS-CEINTL.vscode-language-pack-ko",
+      "version": "1.131.0",
+      "url": "https://open-vsx.org/api/MS-CEINTL/vscode-language-pack-ko/1.131.0/file/MS-CEINTL.vscode-language-pack-ko-1.131.0.vsix",
+      "sha256": "6bc3f9a7c93d4661bd90d67ccfecd9e8d78f593d116f916bf6214bfd32b1d5d3"
+    }
+  ]
+}

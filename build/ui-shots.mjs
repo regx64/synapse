@@ -55,7 +55,9 @@ git("add", "-A");
 git("commit", "-qm", "initial");
 
 // 2. Launch the editor.
-const userData = path.join(tmp, "user");
+// --user-data / --extensions reuse folders prepared beforehand (e.g. with a language pack installed).
+const userData = path.resolve(arg("user-data", path.join(tmp, "user")));
+const extensionsDir = path.resolve(arg("extensions", path.join(tmp, "extensions")));
 fs.mkdirSync(path.join(userData, "User"), { recursive: true });
 fs.writeFileSync(path.join(userData, "User", "settings.json"), JSON.stringify({ "workbench.tips.enabled": false, "security.workspace.trust.enabled": false }));
 const app = await electron.launch({
@@ -63,7 +65,7 @@ const app = await electron.launch({
   args: [
     repo,
     `--user-data-dir=${userData}`,
-    `--extensions-dir=${path.join(tmp, "extensions")}`,
+    `--extensions-dir=${extensionsDir}`,
     `--locale=${locale}`,
     "--skip-welcome",
     "--skip-release-notes",

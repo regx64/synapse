@@ -52,6 +52,18 @@ check("Synapse extension is built in", fs.existsSync(path.join(appRoot, "extensi
 const messages = JSON.parse(fs.readFileSync(path.join(appRoot, "out", "nls.messages.json"), "utf8"));
 const vsCode = messages.filter((m) => /\bVisual Studio Code\b|\bVS ?Code\b/.test(m) && !/VS Code for the Web|(Stable|Insiders)( version of)? VS Code|VS Code (Stable|Insiders)|VS Code marketplace/i.test(m));
 check('UI messages say "Synapse", not "VS Code"', vsCode.length === 0, vsCode.slice(0, 3).join(" | "));
+// The Korean language pack ships, is indexed for the editor (patch 0004), and says Synapse too.
+const packsFile = path.join(appRoot, "out", "synapse-languagepacks.json");
+const packs = fs.existsSync(packsFile) ? JSON.parse(fs.readFileSync(packsFile, "utf8")) : {};
+const koMain = packs.ko?.translations?.vscode ? path.join(appRoot, "out", packs.ko.translations.vscode) : "";
+check("Korean language pack is built in", !!koMain && fs.existsSync(koMain), koMain ? "" : "no out/synapse-languagepacks.json entry");
+if (koMain && fs.existsSync(koMain)) {
+  const ko = [];
+  const walk = (o) => Object.values(o).forEach((v) => (typeof v === "string" ? ko.push(v) : v && typeof v === "object" && walk(v)));
+  walk(JSON.parse(fs.readFileSync(koMain, "utf8")));
+  const left = ko.filter((m) => /\bVisual Studio Code\b|\bVS ?Code\b/.test(m) && !/(Visual Studio Code|VS ?Code)\s*마켓플레이스|웹용 VS ?Code|VS ?Code\s*(Insiders|참가자|안정)|VS Code for the Web|marketplace/i.test(m));
+  check('Korean messages say "Synapse", not "VS Code"', left.length === 0, left.slice(0, 2).join(" | "));
+}
 
 // 2. A small git repository to open.
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "synapse-smoke-"));
@@ -88,33 +100,44 @@ try {
   const appName = await app.evaluate(({ app: electronApp }) => electronApp.getName());
   check("the app calls itself Synapse", appName === product.nameShort, appName);
   // macOS window titles show only the folder, never the app name.
-  const title = await page.title();
-  const titleOk = !/Visual Studio Code|VS Code/.test(title) && (process.platform === "darwin" || title.includes(product.nameShort));
-  check("window title", titleOk, title);
+  const windowTitle = await page.title();
+  const titleOk = !/Visual Studio Code|VS Code/.test(windowTitle) && (process.platform === "darwin" || windowTitle.includes(product.nameShort));
+  check("window title", titleOk, windowTitle);
 
   // The built-in extension starts synapse-core for the open repository.
   const coreFile = path.join(repo, ".synapse", "core.json");
   const started = await waitFor(() => fs.existsSync(coreFile), 90_000);
   check("synapse-core starts for the open repository", started, started ? "" : "no .synapse/core.json");
 
-  const synapseIcon = page.locator('.activitybar [aria-label^="Synapse"]').first();
-  check("Synapse is in the activity bar", (await synapseIcon.count()) > 0);
-  const copilot = await page.locator('.activitybar [aria-label*="Copilot" i], .statusbar [aria-label*="Copilot" i]').count();
-  check("no Copilot in the activity bar or status bar", copilot === 0, copilot ? `${copilot} element(s)` : "");
+  // The new layout: agents on the left, home tab in the middle, agent detail on the right.
+  const frameWith = (text) =>
+    waitFor(async () => {
+      for (const f of page.frames()) if (await f.getByText(text).count().catch(() => 0)) return true;
+      return false;
+    }, 60_000);
+  check("the agents list is in the side bar", await frameWith(/^(New agent|새 에이전트)$/));
+  check("the home tab renders its overview", await frameWith(/^(Needs you|확인 필요)$/));
+  const homeTab = await page.locator('.tabs-container .tab[aria-label*="Home"], .tabs-container .tab[aria-label*="홈"]').count();
+  check("the home tab is an editor tab", homeTab > 0);
+  check("the agent column is open", await frameWith(/No agents yet\. Add one|아직 에이전트가 없습니다\. 에이전트를 추가하면/));
+  const copilot = await page.locator('.activitybar [aria-label*="Copilot" i], .statusbar [aria-label*="Copilot" i], .titlebar [aria-label*="Copilot" i]').count();
+  check("no Copilot in the activity bar, status bar or title bar", copilot === 0, copilot ? `${copilot} element(s)` : "");
   const copilotText = await page.getByText(/Copilot/i).count();
   check("no Copilot chat or setup anywhere in the window", copilotText === 0, copilotText ? `${copilotText} element(s)` : "");
   const usage = await page.getByText(/collects usage data/i).count();
   check("no usage-data (telemetry) notice", usage === 0);
 
-  // The board renders (a webview: look through its frames).
-  if ((await synapseIcon.count()) > 0) await synapseIcon.click();
-  const board = await waitFor(async () => {
-    for (const f of page.frames()) {
-      if (await f.locator("text=Needs you").count().catch(() => 0)) return true;
-    }
-    return false;
-  }, 60_000);
-  check("the board renders its Overview", board);
+  // Patch 0003: agent status in the title bar, the Synapse font; and the Synapse Dark theme.
+  const title = await waitFor(async () => (await page.locator(".synapse-title-status").textContent().catch(() => "")) || "", 30_000).then(() => page.locator(".synapse-title-status").textContent().catch(() => ""));
+  check("agent status in the title bar", /Working|작업 중/.test(title ?? ""), title ?? "");
+  const look = await page.evaluate(() => {
+    const wb = document.querySelector(".monaco-workbench");
+    const css = wb ? getComputedStyle(wb) : undefined;
+    return { font: css?.fontFamily ?? "", card: css?.getPropertyValue("--vscode-synapse-cardBackground").trim() ?? "", pretendard: document.fonts.check('12px "Pretendard"') };
+  });
+  check("the workbench uses Pretendard", /^"?Pretendard/.test(look.font), look.font);
+  check("Synapse Dark is the theme", look.card.toLowerCase() === "#141417", look.card);
+  await page.waitForTimeout(1500); // let the views finish rendering for the screenshot
 
   if (screenshot) {
     await page.screenshot({ path: screenshot });

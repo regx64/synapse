@@ -71,7 +71,6 @@ exports.run = async function run() {
       ["workbench.colorTheme", "Synapse Dark"],
       ["workbench.activityBar.location", "hidden"],
       ["workbench.statusBar.visible", false],
-      ["window.commandCenter", false],
       ["editor.minimap.enabled", false],
       ["workbench.startupEditor", "none"],
     ]) assert.deepEqual(cfg.inspect(key).defaultValue, want, `default of ${key}`);

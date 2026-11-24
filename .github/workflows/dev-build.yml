@@ -81,15 +81,18 @@ jobs:
           retention-days: 7
       - name: Move the build into the workspace (artifact paths cannot use ..)
         shell: bash
-        # Retry: on Windows a just-closed app can hold files for a few seconds.
+        # On Windows, Synapse processes the smoke test started can outlive it and
+        # lock the folder: end them first, retry, and copy if it stays locked.
         run: |
           src="$SYNAPSE_VSCODE_DIR/../VSCode-${{ matrix.platform }}-${{ matrix.arch }}"
+          if [ "${{ matrix.platform }}" = win32 ]; then taskkill //F //T //IM Synapse.exe || true; fi
           for i in 1 2 3 4 5 6; do
             mv "$src" . && exit 0
             echo "move failed (attempt $i), retrying in 5 s"
             sleep 5
           done
-          exit 1
+          echo "the folder stays locked; copying it instead"
+          cp -r "$src" .
       - uses: actions/upload-artifact@v6
         with:
           name: synapse-${{ matrix.platform }}-${{ matrix.arch }}

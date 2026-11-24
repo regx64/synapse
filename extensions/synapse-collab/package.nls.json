@@ -65,5 +65,7 @@
   "color.statusNeedsYou": "Synapse: something needs the person.",
   "color.statusReview": "Synapse: work is ready for review.",
   "color.statusError": "Synapse: a conflict or an error.",
-  "color.statusIdle": "Synapse: an agent is idle."
+  "color.statusIdle": "Synapse: an agent is idle.",
+  "config.workbenchFont": "Use Synapse's font (Pretendard) for the workbench. Off: the system font.",
+  "config.autoHideAgentColumn": "Hide the agent column (secondary side bar) when the window is narrower than 1280 pixels, and show it again when it is wider. Opening it by hand keeps it open."
 }

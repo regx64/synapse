@@ -37,7 +37,7 @@ needs a machine or CI runner with the upstream toolchain (see
 3. only then a core patch in `patches/`, registered in `patches/series.json`
    with an owner and a reason.
 
-**Budget: 20 core patches** (`build/check-patches.mjs`, part of `npm run check`).
+**Budget: 60 core patches** (`build/check-patches.mjs`, part of `npm run check`).
 Current count: **2**:
 
 - `0001-publisher-from-product.patch` makes the Windows and macOS file
@@ -75,7 +75,7 @@ Record these at every sync; together they decide gate G3:
 | Metric | Source | G1 target | G3 signal |
 | --- | --- | --- | --- |
 | Person-hours per sync | the sync issue | one sync within 2 days | 4+ days a month |
-| Core patches | `node build/check-patches.mjs` | ≤ 5 | > 20, or 3+ UX needs the extension API cannot meet |
+| Core patches | `node build/check-patches.mjs` | ≤ 5 | > 60, or 3+ UX needs the extension API cannot meet |
 | Days behind upstream | `node build/check-upstream.mjs` | — | > 14 |
 
 ## Branding

@@ -159,7 +159,7 @@ There are 26 risks. Four are high on both likelihood and impact: S1 (upstream VS
 | L4 | Using the VS Code trademark or logo, or dropping the MIT notice | Low | Medium | Check a branding and notice checklist every release | Checklist fails | 1 |
 | L5 | Agent CLI terms (automation, wrapping, conditions on subscription accounts) | Medium | High | Use only official SDK and ACP paths; review the terms | Terms-change notices | 0, 2 |
 | T1 | Upstream sync burden | High | High | Patches applied at build time, a patch budget, CI that applies patches automatically | One sync takes more than 2 days, or lag exceeds 2 weeks | All |
-| T2 | Extension API limits push more changes into core patches | Medium | High | Patch budget of 20; going over is a G3 signal | Patch count trending up | 2, 3 |
+| T2 | Extension API limits push more changes into core patches | Medium | High | Patch budget of 60 (raised from 20 for the UI redesign); going over is a G3 signal | Patch count trending up | 2, 3 |
 | T3 | Changes to ACP or agent CLIs break the adapters | High | Medium | Adapter layer, pinned versions, nightly compatibility tests | Nightly tests fail | 2 |
 | T4 | Concurrent edits get out of sync (between worktrees, or ownership records go missing) | Medium | High | Agents write only to their own worktree; the main workspace is for people only; the core is the single source of truth | Ownership records disagree with the actual diff | 2 |
 | T5 | Performance and memory (Electron, language servers, many agents) | Medium | Medium | Agents as separate processes, show resource use, load tests | Reports of sluggishness | 3, 4 |
@@ -188,7 +188,7 @@ There are four gates. The move to a standalone IDE is decided by G3’s numbers,
 
 G3 conditions:
 
-1. Core patches exceed the budget (20), or 3 or more core UX needs have piled up that the extension API cannot meet.
+1. Core patches exceed the budget (60; it was 20 until the UI redesign restructured the workbench), or 3 or more core UX needs have piled up that the extension API cannot meet.
 2. Upstream sync takes 4 or more days a month.
 3. At least 500 weekly active users and at least 2 dedicated people.
 4. The synapse-core API has been stable, with no major changes, for 3+ months.

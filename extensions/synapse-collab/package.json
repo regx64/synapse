@@ -299,6 +299,16 @@
           "type": "boolean",
           "default": true,
           "description": "%config.notifications.finished%"
+        },
+        "synapse.workbenchFont": {
+          "type": "boolean",
+          "default": true,
+          "description": "%config.workbenchFont%"
+        },
+        "synapse.autoHideAgentColumn": {
+          "type": "boolean",
+          "default": true,
+          "description": "%config.autoHideAgentColumn%"
         }
       }
     },
@@ -477,7 +487,6 @@
       "workbench.tips.enabled": false,
       "workbench.welcomePage.walkthroughs.openOnInstall": false,
       "workbench.secondarySideBar.defaultVisibility": "visibleInWorkspace",
-      "window.commandCenter": false,
       "editor.minimap.enabled": false,
       "editor.fontFamily": "'JetBrains Mono', Menlo, Consolas, 'Droid Sans Mono', monospace",
       "editor.fontSize": 13,

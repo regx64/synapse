@@ -76,8 +76,8 @@ export function attention(conn: CoreConnection): vscode.Disposable {
   /** Desktop notification when the window is in the background, else an in-app one. */
   const notify = async (kind: "approvals" | "errors" | "finished", title: () => string, body: string, action?: { label: string; run: () => unknown }) => {
     await ready;
-    // The event can arrive before the state that names a new agent: give the refresh a moment.
-    await new Promise((r) => setTimeout(r, 300));
+    // The event can arrive before the state that names a new agent.
+    await conn.refresh().catch(() => {});
     if (!vscode.window.state.focused && hasOsNotify && cfg().get<boolean>(kind, true)) {
       await vscode.commands.executeCommand(OS_NOTIFY, { title: title(), body }).then(undefined, () => {});
       return;

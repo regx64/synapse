@@ -112,6 +112,55 @@
     "team-claim": ["users", "info"],
   };
 
+  /** The alert's title in the person's language, built from state; the core's English title if the item is gone. */
+  function alertTitle(a, state) {
+    const where = (c) => (c.symbol ? `${c.path} › ${c.symbol}` : c.path);
+    switch (a.kind) {
+      case "approval": {
+        const ap = state.approvals.find((x) => x.id === a.ref);
+        return ap ? t("alert.approval", nameOf(state, ap.agentId), ap.title) : a.title;
+      }
+      case "conflict": {
+        const c = state.conflicts.find((x) => x.id === a.ref);
+        if (!c) return a.title;
+        if (c.kind === "decision") return t("alert.conflictDecision", c.decisionId || "");
+        const kind = t(`conflict.${c.kind}`);
+        return t("alert.conflict", kind === `conflict.${c.kind}` ? c.kind : kind, where(c));
+      }
+      case "agent-error": {
+        const ag = agentOf(state, a.ref);
+        return ag ? t("alert.agentError", ag.name) : a.title;
+      }
+      case "held-message": {
+        const m = state.messages.find((x) => x.id === a.ref);
+        return m ? t("alert.held", nameOf(state, m.from), m.subject) : a.title;
+      }
+      case "proposed-decision": {
+        const d = state.decisions.find((x) => x.id === a.ref);
+        if (!d) return a.title;
+        return d.author === "human" ? t("alert.proposedByYou", d.id, d.title) : t("alert.proposed", nameOf(state, d.author), d.id, d.title);
+      }
+      case "stale-decision":
+        return t("alert.stale", a.ref);
+      case "task-review": {
+        const x = state.tasks.find((y) => y.id === a.ref);
+        return x ? t("alert.review", x.id, x.title) : a.title;
+      }
+      case "risky-command": {
+        const n = Number((a.title.match(/^\d+/) || ["0"])[0]);
+        return n ? t("alert.risky", n) : a.title;
+      }
+      case "team-claim": {
+        const c = (state.team?.claimsOnMe || []).find((x) => x.id === a.ref);
+        if (!c) return a.title;
+        const own = nameOf(state, c.agent.slice(c.agent.indexOf("/") + 1));
+        return c.task ? t("alert.claimTask", c.by, own, c.task) : t("alert.claim", c.by, own);
+      }
+      default:
+        return a.title;
+    }
+  }
+
   function alertCard(a, state) {
     const [ic, tone] = KIND[a.kind] || ["alert", "info"];
     const agent = a.agentId ? agentOf(state, a.agentId) : undefined;
@@ -119,7 +168,7 @@
     return h("div", { class: "card card-pad alert" }, [
       h("span", { class: `tile ${tone}`, "aria-hidden": "true" }, [icon(ic)]),
       h("div", { class: "grow col tight" }, [
-        h("div", { class: "strong" }, [a.title]),
+        h("div", { class: "strong" }, [alertTitle(a, state)]),
         ap && ap.detail ? h("code", { class: "code-block clamp" }, [approvalText(ap)]) : a.detail ? h("div", { class: "small fg2 clamp" }, [a.detail]) : null,
         agent ? h("div", { class: "row tiny muted" }, [dot(agent.color, "sm"), agent.name, a.at ? ` · ${ago(a.at)}` : ""]) : null,
       ]),
