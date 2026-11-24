@@ -1,0 +1,3 @@
+# Patches to upstream must keep LF line endings on every OS: with CRLF from a
+# Windows checkout, the lines they add would carry a stray carriage return.
+*.patch -text
