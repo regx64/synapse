@@ -5,7 +5,7 @@
   // eslint-disable-next-line no-undef
   const vscode = acquireVsCodeApi();
   const UI = /** @type {any} */ (window).SynapseUI;
-  const { t, h, icon, button, dot, statusOf, statusEl, taskOf, planOf, progress, filesOf, fileCount, approvalText, conflictText, diffstat, ago, guardedRender } = UI;
+  const { t, h, icon, button, dot, statusOf, statusEl, taskOf, planOf, progress, filesOf, fileCount, approvalText, conflictText, testsEl, diffstat, ago, guardedRender } = UI;
   const root = /** @type {HTMLElement} */ (document.getElementById("root"));
   const saved = vscode.getState() || {};
   let section = saved.section || "overview";
@@ -110,6 +110,7 @@
     "task-review": ["checkCircle", "review"],
     "risky-command": ["shield", "error"],
     "team-claim": ["users", "info"],
+    "tests-failed": ["alert", "error"],
   };
 
   /** The alert's title in the person's language, built from state; the core's English title if the item is gone. */
@@ -150,6 +151,10 @@
         const n = Number((a.title.match(/^\d+/) || ["0"])[0]);
         return n ? t("alert.risky", n) : a.title;
       }
+      case "tests-failed": {
+        const ag = agentOf(state, a.ref);
+        return ag ? t("alert.testsFailed", ag.name) : a.title;
+      }
       case "team-claim": {
         const c = (state.team?.claimsOnMe || []).find((x) => x.id === a.ref);
         if (!c) return a.title;
@@ -178,6 +183,7 @@
 
   /** Conflicts read in the person's language; other details are the core's. */
   function alertDetail(a, state) {
+    if (a.kind === "tests-failed") return h("code", { class: "pre" }, [a.detail || ""]);
     if (a.kind !== "conflict") return a.detail;
     const c = state.conflicts.find((x) => x.id === a.ref);
     return c ? conflictText(c, (id) => nameOf(state, id)) : a.detail;
@@ -222,6 +228,8 @@
         return [button(t("review.merge"), () => cmd("synapse.prepareReview"), "primary"), a.agentId ? button(t("needs.seeChanges"), () => post("select", { id: a.agentId, show: "diff" })) : null, button(t("needs.markDone"), () => post("taskAction", { id: a.ref, action: "done" }), "ghost")];
       case "risky-command":
         return [button(t("needs.details"), () => go("audit"))];
+      case "tests-failed":
+        return [button(t("needs.seeOutput"), () => post("select", { id: a.ref, show: "tests" }), "primary"), button(t("tests.runAgain"), () => post("runTests", { id: a.ref }))];
       case "team-claim":
         return [button(t("needs.resetMine"), () => cmd("synapse.resetAgent", a.agentId)), button(t("needs.dismiss"), () => post("teamDismiss", { id: a.ref }), "ghost")];
       default:
@@ -243,7 +251,7 @@
         h("span", { class: "ell" }, [title || h("span", { class: "muted" }, [t("agents.noTask")])]),
         plan.total ? h("span", { class: "row" }, [h("span", { class: "tiny muted" }, [t("plan")]), progress(plan.done, plan.total, a.color)]) : null,
         last ? h("span", { class: "small fg2 ell" }, [last.slice(0, 160)]) : null,
-        h("span", { class: "row tiny muted" }, [files.length ? [fileCount(files.length), " · ", diffstat(add, del)] : t("agents.noChanges")]),
+        h("span", { class: "row tiny muted" }, [files.length ? [fileCount(files.length), " · ", diffstat(add, del)] : t("agents.noChanges"), h("span", { class: "spacer" }), testsEl(a)]),
       ],
     );
   }

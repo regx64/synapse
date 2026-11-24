@@ -6,7 +6,7 @@
   // eslint-disable-next-line no-undef
   const vscode = acquireVsCodeApi();
   const UI = /** @type {any} */ (window).SynapseUI;
-  const { t, h, icon, iconButton, segmented, dot, statusOf, statusEl, taskOf, planOf, progress, filesOf, approvalText, diffstat, ago, guardedRender, draftArea } = UI;
+  const { t, h, icon, iconButton, segmented, dot, statusOf, statusEl, taskOf, planOf, progress, filesOf, approvalText, testsEl, diffstat, ago, guardedRender, draftArea } = UI;
   const root = /** @type {HTMLElement} */ (document.getElementById("root"));
   const saved = vscode.getState() || {};
   /** @type {any} */
@@ -53,7 +53,7 @@
         h("div", { class: "row" }, [
           dot(a.color, "lg"),
           h("div", { class: "col tight grow" }, [
-            h("div", { class: "row" }, [h("h1", { class: "name" }, [a.name]), statusEl(st)]),
+            h("div", { class: "row" }, [h("h1", { class: "name" }, [a.name]), statusEl(st), testsEl(a)]),
             h("div", { class: "mono tiny muted ell" }, [[a.agentInfo?.name || a.preset, a.worktree.branch].filter(Boolean).join(" · ")]),
           ]),
           running
@@ -237,7 +237,19 @@
     );
   }
 
+  /** The last test run in the agent's worktree, with its output. */
+  function testsBlock(a) {
+    const r = a.tests;
+    const run = h("button", { class: "btn sm", onclick: () => post({ type: "runTests", id: a.id }), disabled: (r && r.status === "running") || undefined }, [icon("play", 10), r ? t("tests.runAgain") : t("tests.run")]);
+    if (!r) return h("div", { class: "row tests" }, [h("span", { class: "tiny muted grow" }, [t("tests.none")]), run]);
+    return h("details", { class: "tests", open: r.status === "failed" || undefined }, [
+      h("summary", { class: "row" }, [testsEl(a), h("code", { class: "tiny muted ell grow" }, [r.command]), r.durationMs ? h("span", { class: "tiny muted" }, [`${(r.durationMs / 1000).toFixed(1)} s`]) : null, run]),
+      r.output ? h("pre", { class: "code-block output" }, [r.output]) : null,
+    ]);
+  }
+
   function renderChanges(body, a, files, state) {
+    body.append(testsBlock(a));
     if (!files.length) {
       body.append(h("p", { class: "muted small" }, [t("detail.noChanges")]));
       return;
@@ -323,6 +335,11 @@
     if (d?.type === "state") {
       if (d.selected !== msg.selected) stickToBottom = true;
       msg = d;
+    } else if (d?.type === "showTab") {
+      tab = d.tab;
+      remember();
+      render();
+      return;
     } else if (d?.type === "focusComposer") {
       tab = tab === "conversation" ? tab : "conversation";
       const ta = /** @type {HTMLTextAreaElement|null} */ (document.getElementById("composer-text"));

@@ -18,6 +18,7 @@ export class DetailView implements vscode.WebviewViewProvider, vscode.Disposable
   constructor(private readonly deps: ViewDeps) {
     this.disposables.push(
       deps.selection.onChange(() => this.sendTranscript()),
+      deps.selection.onShowTab((tab) => void this.view?.webview.postMessage({ type: "showTab", tab })),
       deps.conn.onEvent((ev) => {
         if (ev.type !== "agent.output") return;
         const o = ev.data as AgentOutputEvent;

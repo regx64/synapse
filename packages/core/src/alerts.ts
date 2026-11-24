@@ -82,6 +82,19 @@ export function computeAlerts(s: Omit<CoreState, "alerts">, now = Date.now()): A
       at: last.at,
     });
   }
+  for (const a of s.agents) {
+    if (a.tests?.status !== "failed") continue;
+    out.push({
+      id: `tests-failed:${a.id}`,
+      kind: "tests-failed",
+      level: "action",
+      title: `${a.name}'s tests failed`,
+      detail: (a.tests.output ?? "").trimEnd().split("\n").slice(-3).join("\n"),
+      agentId: a.id,
+      ref: a.id,
+      at: a.tests.startedAt,
+    });
+  }
   for (const c of s.team?.claimsOnMe ?? []) {
     const own = c.agent.slice(c.agent.indexOf("/") + 1);
     out.push({

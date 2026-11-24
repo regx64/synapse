@@ -127,3 +127,6 @@
 .rewind-row { display: flex; justify-content: flex-end; margin-top: -8px; }
 .rewind-row .link { display: inline-flex; align-items: center; gap: 4px; color: var(--sy-muted); text-decoration: none; }
 .rewind-row .link:hover { color: var(--sy-fg); text-decoration: underline; }
+.tests { margin-bottom: 12px; }
+.tests summary { cursor: pointer; list-style: none; }
+.tests .output { margin-top: 6px; max-height: 260px; overflow: auto; }

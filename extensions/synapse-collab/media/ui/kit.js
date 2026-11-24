@@ -199,6 +199,13 @@
         return c.message;
     }
   }
+  /** The agent's last test run as a small badge, or nothing. */
+  function testsEl(agent) {
+    const r = agent.tests;
+    if (!r) return null;
+    const cls = r.status === "passed" ? "st-review" : r.status === "failed" ? "st-error" : "st-working";
+    return h("span", { class: `status ${cls}`, title: r.command }, [icon(r.status === "passed" ? "check" : r.status === "failed" ? "alert" : "refresh", 11), t(`tests.${r.status}`)]);
+  }
   /** "+12 −3" */
   const diffstat = (add, del) => h("span", { class: "mono tiny" }, [h("span", { class: "add" }, [`+${add}`]), " ", h("span", { class: "del" }, [`−${del}`])]);
 
@@ -258,5 +265,5 @@
     return { el: ta, clear };
   }
 
-  /** @type {any} */ (window).SynapseUI = { t, lang, h, append, icon, iconButton, button, segmented, dot, statusOf, statusLabel, statusEl, taskOf, planOf, progress, filesOf, fileCount, approvalText, conflictText, diffstat, ago, guardedRender, draftArea };
+  /** @type {any} */ (window).SynapseUI = { t, lang, h, append, icon, iconButton, button, segmented, dot, statusOf, statusLabel, statusEl, taskOf, planOf, progress, filesOf, fileCount, approvalText, conflictText, testsEl, diffstat, ago, guardedRender, draftArea };
 })();

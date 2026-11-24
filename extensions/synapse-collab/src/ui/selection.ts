@@ -9,6 +9,13 @@ export class Selection implements vscode.Disposable {
   private id?: string;
   private readonly emitter = new vscode.EventEmitter<string | undefined>();
   readonly onChange = this.emitter.event;
+  private readonly tabEmitter = new vscode.EventEmitter<string>();
+  /** A view asked the agent detail to show one of its tabs (conversation, plan, changes). */
+  readonly onShowTab = this.tabEmitter.event;
+
+  showTab(tab: string): void {
+    this.tabEmitter.fire(tab);
+  }
   private readonly sub: vscode.Disposable;
 
   constructor(
@@ -40,5 +47,6 @@ export class Selection implements vscode.Disposable {
   dispose(): void {
     this.sub.dispose();
     this.emitter.dispose();
+    this.tabEmitter.dispose();
   }
 }

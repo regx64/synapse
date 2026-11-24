@@ -70,6 +70,8 @@ window.SYNAPSE_STRINGS = {
     "cf.file": "{0} are editing different parts of {1}.", "cf.decision": "{0} is changing {1}, which decision {2} is pinned to. Check that the change still follows it.",
     "needs.tell": "Tell {0}", "needs.told": "Told {0}",
     "detail.rewind": "Rewind to before this", "detail.rewound": "Rewound the worktree to before a turn",
+    "tests.running": "Testing", "tests.passed": "Tests pass", "tests.failed": "Tests fail", "tests.run": "Run tests", "tests.runAgain": "Run tests again", "tests.none": "Tests haven't run in this agent's worktree yet.",
+    "alert.testsFailed": "{0}'s tests fail", "needs.seeOutput": "See output",
     "stop.cancelled": "Turn stopped", "stop.refusal": "The agent declined", "stop.max_tokens": "Stopped: output limit reached", "stop.max_turn_requests": "Stopped: step limit reached",
   },
   ko: {
@@ -140,6 +142,8 @@ window.SYNAPSE_STRINGS = {
     "cf.file": "{0}이(가) {1}의 서로 다른 부분을 고치고 있습니다.", "cf.decision": "{0}이(가) 결정 {2}이(가) 고정된 {1}을(를) 바꾸고 있습니다. 변경이 그 결정을 따르는지 확인하세요.",
     "needs.tell": "{0}에게 알리기", "needs.told": "{0}에게 알림",
     "detail.rewind": "이 턴 전으로 되돌리기", "detail.rewound": "작업 공간을 이전 턴 전으로 되돌렸습니다",
+    "tests.running": "테스트 중", "tests.passed": "테스트 통과", "tests.failed": "테스트 실패", "tests.run": "테스트 실행", "tests.runAgain": "테스트 다시 실행", "tests.none": "이 에이전트의 작업 공간에서 아직 테스트를 돌리지 않았습니다.",
+    "alert.testsFailed": "{0}의 테스트가 실패합니다", "needs.seeOutput": "출력 보기",
     "stop.cancelled": "턴을 중지했습니다", "stop.refusal": "에이전트가 거절했습니다", "stop.max_tokens": "중지: 출력 한도 도달", "stop.max_turn_requests": "중지: 단계 한도 도달",
   },
 };

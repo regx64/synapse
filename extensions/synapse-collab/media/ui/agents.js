@@ -4,7 +4,7 @@
 (function () {
   // eslint-disable-next-line no-undef
   const vscode = acquireVsCodeApi();
-  const { t, h, icon, segmented, dot, statusOf, statusEl, taskOf, planOf, progress, ago, guardedRender } = /** @type {any} */ (window).SynapseUI;
+  const { t, h, icon, segmented, dot, statusOf, statusEl, taskOf, planOf, progress, testsEl, ago, guardedRender } = /** @type {any} */ (window).SynapseUI;
   const root = /** @type {HTMLElement} */ (document.getElementById("root"));
   /** @type {any} */
   let msg = { state: null, connected: false };
@@ -67,7 +67,7 @@
             [
               h("span", { class: "row" }, [dot(a.color), h("span", { class: "name" }, [a.name]), h("span", { class: "tiny muted ell" }, [a.agentInfo?.name || a.preset || ""]), h("span", { class: "spacer" }), statusEl(st)]),
               h("span", { class: "task ell small fg2" }, [title || t("agents.noTask")]),
-              plan.total ? h("span", { class: "row indent" }, [progress(plan.done, plan.total, a.color)]) : null,
+              plan.total || a.tests ? h("span", { class: "row indent" }, [plan.total ? progress(plan.done, plan.total, a.color) : h("span", { class: "spacer" }), testsEl(a)]) : null,
             ],
           ),
         ]),

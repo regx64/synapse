@@ -98,8 +98,25 @@ export interface AgentState extends Omit<AgentConfig, "env"> {
   plan?: PlanEntry[];
   /** The most recent tool calls (bounded). */
   toolCalls: ToolCallSummary[];
+  /** The tests last run in this agent's worktree (after a turn, or on request). */
+  tests?: AgentTests;
   createdAt: string;
   updatedAt: string;
+}
+
+/** `testCommand` run in an agent's own worktree. */
+export interface AgentTests {
+  status: "running" | "passed" | "failed";
+  command: string;
+  startedAt: string;
+  durationMs?: number;
+  timedOut?: boolean;
+  /** The end of the output (redacted). */
+  output?: string;
+  /** The worktree snapshot the tests ran on. */
+  snapshot?: string;
+  /** Failures given back to the agent in a row (see testsFeedback). */
+  feedbackCount?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -573,7 +590,8 @@ export type AlertKind =
   | "stale-decision"
   | "task-review"
   | "risky-command"
-  | "team-claim";
+  | "team-claim"
+  | "tests-failed";
 
 /** Something the person should act on. Derived from state; it goes away when acted on. */
 export interface Alert {
@@ -761,6 +779,8 @@ export interface CoreMethods {
   /** The agent's conversation, oldest first. `from` returns entries from that `n` on (pass the newest `n` you have: it may still be growing). */
   "agents.transcript": { params: { id: string; from?: number; limit?: number }; result: TranscriptEntry[] };
   /** Puts the agent's worktree back to how it was before the turn that starts at transcript entry `n`. */
+  /** Runs testCommand in the agent's worktree now. */
+  "agents.test": { params: { id: string }; result: AgentState };
   "agents.rewind": { params: { id: string; n: number }; result: AgentState };
   "comments.list": { params: { agentId?: string } | void; result: CodeComment[] };
   /**

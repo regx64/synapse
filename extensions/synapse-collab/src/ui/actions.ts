@@ -8,7 +8,7 @@ import type { Selection } from "./selection.js";
 export type ViewMessage =
   | { type: "ready" }
   | { type: "command"; command: string; args?: unknown[] }
-  | { type: "select"; id: string; show?: "detail" | "diff" }
+  | { type: "select"; id: string; show?: "detail" | "diff" | "tests" }
   | { type: "prompt"; id: string; text: string }
   | { type: "steer"; id: string; text: string; mode: "now" | "next" }
   | { type: "teamSync" }
@@ -26,7 +26,8 @@ export type ViewMessage =
   | { type: "editPolicy"; agentId: string }
   | { type: "dismissChecklist" }
   | { type: "tellConflict"; id: string; agentId: string }
-  | { type: "rewind"; id: string; n: number };
+  | { type: "rewind"; id: string; n: number }
+  | { type: "runTests"; id: string };
 
 /** Commands a webview may run through `{ type: "command" }`. */
 const ALLOWED_COMMANDS = new Set([
@@ -71,7 +72,10 @@ export async function handleViewMessage(m: ViewMessage, conn: CoreConnection, se
       case "select":
         selection.select(m.id);
         if (m.show === "diff") await vscode.commands.executeCommand("synapse.liveDiff", m.id);
-        else if (m.show === "detail") await vscode.commands.executeCommand("synapse.detail.focus");
+        else if (m.show === "detail" || m.show === "tests") {
+          await vscode.commands.executeCommand("synapse.detail.focus");
+          if (m.show === "tests") selection.showTab("changes");
+        }
         return;
       case "prompt":
         if (m.text.trim()) await conn.call("agents.prompt", { id: m.id, text: m.text });
@@ -140,6 +144,9 @@ export async function handleViewMessage(m: ViewMessage, conn: CoreConnection, se
         if (ok === go) await conn.call("agents.rewind", { id: m.id, n: m.n });
         return;
       }
+      case "runTests":
+        await conn.call("agents.test", { id: m.id });
+        return;
       case "dismissChecklist":
         await context.workspaceState.update("synapse.checklistDismissed", true);
         return;
