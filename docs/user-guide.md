@@ -3,6 +3,26 @@
 Everything here works from the board in the Synapse IDE and from the
 `synapse` CLI; both call the same core.
 
+## Overview
+
+The board opens on **Overview**: first **Needs you**, only the things that
+wait for you or can cause damage, most urgent first, each with its action
+right there:
+
+| Alert | Action |
+| --- | --- |
+| an agent asks permission | the agent's own options (allow, reject…) |
+| a conflict between agents (errors first) | open the file |
+| an agent stopped with an error | restart, or hand its work to another agent |
+| a message held for you | release or reject |
+| a proposed decision | accept or reject |
+| a pinned decision whose code changed | still holds |
+| a task ready for review | review & merge, or mark done |
+| risky commands an agent ran without asking (last day) | open the audit |
+
+Below it, every agent at a glance: status, task, plan progress, files,
+comments and waiting guidance. `synapse alerts` prints the same list.
+
 ## Agents and worktrees
 
 An agent is any program that speaks the [Agent Client Protocol](https://agentclientprotocol.com)

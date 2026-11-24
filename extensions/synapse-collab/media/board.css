@@ -127,3 +127,10 @@ pre.detail { font-size: 11px; max-height: 10em; overflow: auto; margin: 0; backg
 .turn .pill { margin-left: 6px; }
 .prompt.steer { flex-direction: column; align-items: stretch; }
 .prompt.steer .row { justify-content: flex-end; }
+.alert { margin: 6px 0; padding: 6px 8px; border-left: 3px solid var(--vscode-focusBorder); background: var(--vscode-textCodeBlock-background); }
+.alert.lvl-urgent { border-left-color: var(--vscode-errorForeground); }
+.pill.lvl-urgent { background: var(--vscode-errorForeground); color: var(--vscode-editor-background); }
+.clip { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 6px; }
+.mini { padding: 6px 8px; border-left: 3px solid; background: var(--vscode-textCodeBlock-background); min-width: 0; }
+.mini .row { justify-content: space-between; }

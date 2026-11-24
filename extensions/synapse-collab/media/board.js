@@ -7,7 +7,7 @@
   const root = /** @type {HTMLElement} */ (document.getElementById("root"));
   const saved = vscode.getState() || {};
   const drafts = /** @type {Record<string, string>} */ (saved.drafts || {});
-  const ui = { tab: saved.tab || "agents" };
+  const ui = { tab: saved.tab || "overview" };
   let last = { state: null, connected: false };
   const setTab = (tab) => {
     ui.tab = tab;
@@ -54,7 +54,8 @@
       ]),
     );
 
-    if (pending.length) {
+    // The overview shows approvals among its alerts.
+    if (pending.length && ui.tab !== "overview") {
       root.append(h("h2", {}, [`Approvals (${pending.length})`]));
       for (const ap of pending) {
         const agent = state.agents.find((a) => a.id === ap.agentId);
@@ -80,7 +81,9 @@
     const stale = state.decisions.filter((d) => d.status === "accepted" && (d.anchors ?? []).some((a) => a.state !== "current")).length;
     const review = state.tasks.filter((t) => t.status === "review").length;
     const risky = state.audit.filter((e) => e.risky && e.outcome === "ran-unasked").length;
+    const urgent = (state.alerts || []).filter((x) => x.level === "urgent").length;
     const tabs = [
+      ["overview", `Overview${(state.alerts || []).length ? ` ${urgent ? "⚠" : "•"}${state.alerts.length}` : ""}`],
       ["agents", `Agents${errors.length ? ` ⚠${errors.length}` : ""}`],
       ["tasks", `Tasks${review ? ` •${review}` : ""}`],
       ["messages", `Messages${held ? ` ⏸${held}` : ""}`],
@@ -94,6 +97,7 @@
         tabs.map(([id, label]) => h("button", { class: `tab${ui.tab === id ? " active" : ""}`, onclick: () => setTab(id) }, [label])),
       ),
     );
+    if (ui.tab === "overview") return renderOverview(state);
     if (ui.tab === "tasks") return renderTasks(state);
     if (ui.tab === "messages") return renderMessages(state);
     if (ui.tab === "decisions") return renderDecisions(state);
@@ -130,6 +134,84 @@
   const input = (attrs) => /** @type {HTMLInputElement} */ (h("input", attrs));
   const select = (options, attrs = {}) =>
     /** @type {HTMLSelectElement} */ (h("select", attrs, options.map(([value, label]) => h("option", { value }, [label]))));
+
+  // ---------------------------------------------------------------------------
+  // Overview: only what needs the person, then every agent at a glance.
+
+  function alertActions(a, state) {
+    const go = (tab) => button("Details", () => setTab(tab), "link");
+    switch (a.kind) {
+      case "approval": {
+        const ap = state.approvals.find((x) => x.id === a.ref);
+        return ap ? ap.options.map((o) => button(o.name, () => vscode.postMessage({ type: "approve", id: ap.id, optionId: o.optionId }), o.kind.startsWith("allow") ? "primary" : "")) : [];
+      }
+      case "conflict": {
+        const c = state.conflicts.find((x) => x.id === a.ref);
+        return [c ? button("Open file", () => post("openFile", { path: c.path }), "link") : null, go("agents")];
+      }
+      case "agent-error":
+        return [button("Restart", () => cmd("synapse.restartAgent", a.ref)), button("Hand off…", () => cmd("synapse.takeover", a.ref))];
+      case "held-message":
+        return [button("Release", () => post("messageAction", { id: a.ref, action: "release" }), "primary"), button("Reject", () => post("messageAction", { id: a.ref, action: "reject" })), go("messages")];
+      case "proposed-decision":
+        return [button("Accept", () => post("decisionAction", { id: a.ref, status: "accepted" }), "primary"), button("Reject", () => post("decisionAction", { id: a.ref, status: "rejected" }))];
+      case "stale-decision":
+        return [button("Still holds", () => post("decisionRepin", { id: a.ref }), "primary"), go("decisions")];
+      case "task-review":
+        return [button("Review & merge", () => cmd("synapse.prepareReview"), "primary"), button("Mark done", () => post("taskAction", { id: a.ref, action: "done" }))];
+      case "risky-command":
+        return [go("audit")];
+      default:
+        return [];
+    }
+  }
+
+  function renderOverview(state) {
+    const alerts = state.alerts || [];
+    root.append(h("h2", {}, [`Needs you (${alerts.length})`]));
+    if (!alerts.length) root.append(h("p", { class: "muted" }, ["Nothing needs you right now."]));
+    for (const a of alerts) {
+      root.append(
+        h("div", { class: `alert lvl-${a.level}`, style: { borderLeftColor: a.agentId ? agentColor(state, a.agentId) : "" } }, [
+          h("div", { class: "row" }, [h("span", { class: `pill lvl-${a.level}` }, [a.kind.replace("-", " ")]), h("span", {}, [a.title])]),
+          a.detail ? h("div", { class: "muted small clip" }, [a.detail]) : null,
+          h("div", { class: "row" }, alertActions(a, state)),
+        ]),
+      );
+    }
+
+    const counts = { todo: 0, in_progress: 0, review: 0, done: 0, failed: 0 };
+    for (const t of state.tasks) counts[t.status] = (counts[t.status] || 0) + 1;
+    root.append(
+      h("h2", {}, [`Agents (${state.agents.length})`]),
+      state.tasks.length
+        ? h("div", { class: "muted small" }, [`Tasks: ${counts.in_progress} in progress · ${counts.review} in review · ${counts.todo} to do · ${counts.done} done${counts.failed ? ` · ${counts.failed} failed` : ""}`])
+        : null,
+    );
+    if (!state.agents.length) root.append(h("p", { class: "muted" }, ["No agents yet."]), button("Add agent", () => cmd("synapse.addAgent"), "primary"));
+    const grid = h("div", { class: "grid" }, []);
+    for (const a of state.agents) {
+      const task = a.currentTaskId ? state.tasks.find((t) => t.id === a.currentTaskId) : undefined;
+      const plan = a.plan || [];
+      const done = plan.filter((p) => p.status === "completed").length;
+      const files = (state.ownership[a.id] || { files: [] }).files.length;
+      const comments = openComments(a.id, state);
+      grid.append(
+        h("div", { class: "mini", style: { borderLeftColor: a.color } }, [
+          h("div", { class: "row" }, [h("strong", {}, [a.name]), h("span", { class: `status st-${a.status}` }, [a.status])]),
+          h("div", { class: "small clip" }, [task ? `${task.id} · ${task.title}` : a.turn ? a.turn.prompt.split("\n")[0].slice(0, 80) : h("span", { class: "muted" }, ["no task"])]),
+          h("div", { class: "muted small" }, [
+            [plan.length ? `plan ${done}/${plan.length}` : "", files ? `${files} file${files === 1 ? "" : "s"}` : "no changes", comments ? `💬 ${comments}` : "", a.guidance && a.guidance.length ? `⏳ ${a.guidance.length} guidance` : ""]
+              .filter(Boolean)
+              .join(" · "),
+          ]),
+          a.lastMessage ? h("div", { class: "muted small clip" }, [a.lastMessage.trim().split("\n").pop().slice(0, 120)]) : null,
+          h("div", { class: "row" }, [files ? button("Live diff", () => cmd("synapse.liveDiff", a.id), "link") : null, button("Details", () => setTab("agents"), "link")]),
+        ]),
+      );
+    }
+    root.append(grid);
+  }
 
   function renderTasks(state) {
     const title = input({ placeholder: "New task title" });

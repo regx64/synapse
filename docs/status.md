@@ -50,6 +50,7 @@ vary from run to run, and with two weeks of internal use.
 | Item | State |
 | --- | --- |
 | Task graph: split a goal into subtasks, assign, dependencies | Done: tasks with assignee, dependencies (cycles rejected), scope, auto-start; board tab and CLI |
+| Overview board | Done: the board opens on what needs the person (alerts computed in the core, `computeAlerts`, with one-click actions) and every agent at a glance; `synapse alerts`. Tested in `packages/core/test/alerts.test.ts`; rendered from real core state and checked by eye |
 | Live diff and comments | Done: an agent's changes refresh with every snapshot; comments on lines follow their code, and become guidance, a task, or a note. Tested in `packages/core/test/comments.test.ts`; the panel was rendered from real core state and checked by eye |
 | Steering and takeover | Done: guidance for a working agent (after the turn or interrupting it; the task stays in progress) and handing unfinished work, task and context to another agent. Tested with scripted agents (`packages/core/test/steer.test.ts`) |
 | Handoffs and messages in a structured format (C2) | Done: typed messages with files and symbols; automatic handoffs on "done" use ownership facts; delivered as labeled data; flagged messages held for the person |

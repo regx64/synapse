@@ -18,6 +18,7 @@ import type {
   Review,
 } from "@synapse/protocol";
 import { CORE_API_VERSION } from "@synapse/protocol";
+import { computeAlerts } from "./alerts.js";
 import { debounce, nowIso } from "./util.js";
 
 const BACKLOG_LIMIT = 2000;
@@ -91,7 +92,7 @@ export class StateStore extends EventEmitter {
   }
 
   snapshot(): CoreState {
-    return {
+    const state: Omit<CoreState, "alerts"> = {
       version: CORE_API_VERSION,
       repoRoot: this.repoRoot,
       baseRef: this.baseRef,
@@ -107,6 +108,7 @@ export class StateStore extends EventEmitter {
       audit: this.audit.slice(-200),
       seq: this.seq,
     };
+    return { ...state, alerts: computeAlerts({ ...state, audit: this.audit }) };
   }
 
   // -------------------------------------------------------------------------

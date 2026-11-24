@@ -25,6 +25,7 @@ failing tests), `-32004` not found.
 | --- | --- | --- |
 | `session.hello` | `{ token, client? }` | `{ version, repoRoot, baseRef, pid }` |
 | `state.get` | – | `CoreState`: agents, ownership, conflicts, approvals, reviews, seq |
+| (in `CoreState`) `alerts` | – | `Alert[]`: only what needs the person (approvals, conflicts, agent errors, held messages, proposed and stale decisions, tasks in review, risky commands run unasked), most urgent first; derived, never stored |
 | `events.subscribe` | `{ sinceSeq? }` | `{ seq, backlog }`; then `event` notifications |
 | `events.unsubscribe` | – | `null` |
 | `agents.presets` | – | `PresetInfo[]` |

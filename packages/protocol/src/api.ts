@@ -501,6 +501,34 @@ export interface CodeComment {
 }
 
 // ---------------------------------------------------------------------------
+// Alerts: only what needs the person
+
+export type AlertKind =
+  | "approval"
+  | "conflict"
+  | "agent-error"
+  | "held-message"
+  | "proposed-decision"
+  | "stale-decision"
+  | "task-review"
+  | "risky-command";
+
+/** Something the person should act on. Derived from state; it goes away when acted on. */
+export interface Alert {
+  /** Stable while the underlying item exists. */
+  id: string;
+  kind: AlertKind;
+  /** "urgent": blocks work or may cause damage; "action": waits for the person. */
+  level: "urgent" | "action";
+  title: string;
+  detail?: string;
+  agentId?: string;
+  /** The item to act on: an approval, conflict, message, decision or task id; the agent id for agent errors. */
+  ref: string;
+  at: string;
+}
+
+// ---------------------------------------------------------------------------
 // State and events
 
 export interface CoreState {
@@ -516,6 +544,8 @@ export interface CoreState {
   messages: AgentMessage[];
   decisions: Decision[];
   comments: CodeComment[];
+  /** What needs the person now, most urgent first. */
+  alerts: Alert[];
   /** The most recent audit entries. */
   audit: AuditEntry[];
   seq: number;

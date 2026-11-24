@@ -42,6 +42,7 @@ Agents
 
 Coordination
   status                             the collaboration board
+  alerts                             only what needs you now (approvals, conflicts, errors, reviews…)
   owners [--agent ID]                files and symbols each agent owns
   conflicts [--check]                conflicts between agents
   approvals                          pending approvals
@@ -357,6 +358,15 @@ async function run(c: SynapseClient, cmd: string, sub: string | undefined, rest:
       const m = action === "release" ? await c.call("messages.release", { id }) : action === "reject" ? await c.call("messages.reject", { id }) : undefined;
       if (!m) throw new Error(`Unknown message action: ${action}`);
       out(m, () => `${m.id}: ${m.status}`);
+      return 0;
+    }
+    case "alerts": {
+      const { alerts } = await c.call("state.get");
+      out(alerts, () =>
+        alerts.length
+          ? alerts.map((a) => `  ${a.level === "urgent" ? "!!" : " •"} ${a.title}${a.detail ? `\n      ${a.detail.split("\n")[0]!.slice(0, 160)}` : ""}`).join("\n")
+          : "nothing needs you right now",
+      );
       return 0;
     }
     case "diff": {
