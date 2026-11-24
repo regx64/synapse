@@ -7,6 +7,7 @@ type BoardMessage =
   | { type: "ready" }
   | { type: "command"; command: string; args?: unknown[] }
   | { type: "prompt"; id: string; text: string }
+  | { type: "steer"; id: string; text: string; mode: "now" | "next" }
   | { type: "approve"; id: string; optionId: string }
   | { type: "openFile"; path: string; agentId?: string; line?: number }
   | { type: "createTask"; title: string; description?: string; agentId?: string; dependsOn?: string[]; scope?: string[]; autoStart?: boolean }
@@ -72,6 +73,9 @@ export class BoardProvider implements vscode.WebviewViewProvider, vscode.Disposa
           return;
         case "prompt":
           if (m.text.trim()) await this.conn.call("agents.prompt", { id: m.id, text: m.text });
+          return;
+        case "steer":
+          if (m.text.trim()) await this.conn.call("agents.steer", { id: m.id, text: m.text, mode: m.mode });
           return;
         case "approve":
           await this.conn.call("approvals.resolve", { id: m.id, optionId: m.optionId });

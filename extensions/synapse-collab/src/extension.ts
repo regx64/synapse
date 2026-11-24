@@ -137,6 +137,39 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     const a = await pickAgent(id, (x) => x.status === "working" || x.status === "awaiting-approval");
     if (a) await conn.call("agents.cancel", { id: a });
   });
+  register("synapse.steerAgent", async (id) => {
+    const a = await pickAgent(id, (x) => x.status === "working" || x.status === "awaiting-approval");
+    if (!a) return;
+    const text = await vscode.window.showInputBox({ prompt: "Guidance for the agent while it works", placeHolder: "e.g. Keep the public API unchanged" });
+    if (!text?.trim()) return;
+    const when = await vscode.window.showQuickPick(
+      [
+        { label: "$(clock) After this turn", description: "the agent finishes its turn, then continues with this", mode: "next" as const },
+        { label: "$(debug-pause) Interrupt now", description: "the turn stops and continues with this at once", mode: "now" as const },
+      ],
+      { placeHolder: "When should the agent get it?" },
+    );
+    if (when) await conn.call("agents.steer", { id: a, text, mode: when.mode });
+  });
+  register("synapse.takeover", async (id) => {
+    const from = await pickAgent(id, (x) => !!x.currentTaskId || !!x.turn);
+    if (!from) return;
+    const state = conn.state;
+    const candidates = (state?.agents ?? []).filter((x) => x.id !== from && x.status === "idle" && !x.currentTaskId && !(state?.ownership[x.id]?.files.length));
+    if (!candidates.length) {
+      void vscode.window.showWarningMessage("Synapse: no agent can take over. It needs a running, idle agent without changes of its own.");
+      return;
+    }
+    const to = await vscode.window.showQuickPick(
+      candidates.map((x) => ({ label: x.name, description: x.agentInfo?.name ?? x.preset ?? "", id: x.id })),
+      { placeHolder: "Which agent continues this work? Its changes and task move to that agent." },
+    );
+    if (!to) return;
+    const note = await vscode.window.showInputBox({ prompt: `Note for ${to.label} (optional)`, placeHolder: "e.g. The tests in cart.test.ts still fail" });
+    if (note === undefined) return;
+    const r = await conn.call("agents.takeover", { from, to: to.id, note: note || undefined });
+    void vscode.window.showInformationMessage(`Synapse: ${r.to.name} took over ${r.task ? r.task.id : "the work"} from ${r.from.name} (${r.files.length} file(s) moved).`);
+  });
   register("synapse.removeAgent", async (id) => {
     const a = await pickAgent(id);
     if (!a) return;
@@ -163,6 +196,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     if (!a) return;
     const items: { label: string; command: string }[] = [
       { label: "$(comment) Send prompt…", command: "synapse.promptAgent" },
+      { label: "$(comment-discussion) Add guidance while it works…", command: "synapse.steerAgent" },
+      { label: "$(arrow-swap) Hand work off to another agent…", command: "synapse.takeover" },
       { label: "$(debug-restart) Restart", command: "synapse.restartAgent" },
       { label: "$(folder-opened) Open worktree in new window", command: "synapse.openWorktree" },
       { label: "$(output) Show output", command: "synapse.showOutput" },

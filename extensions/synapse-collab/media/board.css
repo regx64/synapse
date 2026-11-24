@@ -123,3 +123,7 @@ pre.detail { font-size: 11px; max-height: 10em; overflow: auto; margin: 0; backg
 .anchors.stale { border-left-color: var(--vscode-inputValidation-warningBorder); background: var(--vscode-inputValidation-warningBackground); }
 .anchors .anchor { font-family: var(--vscode-editor-font-family); }
 .badge.warn { background: var(--vscode-inputValidation-warningBorder); color: var(--vscode-editor-background); }
+.guidance { margin: 2px 0 4px 12px; padding: 0; list-style: none; }
+.turn .pill { margin-left: 6px; }
+.prompt.steer { flex-direction: column; align-items: stretch; }
+.prompt.steer .row { justify-content: flex-end; }

@@ -218,6 +218,8 @@ export class SynapseCore {
       "agents.start": (p) => this.agents.start(req(p, "id")),
       "agents.stop": (p) => this.agents.stop(req(p, "id")),
       "agents.restart": (p) => this.agents.restart(req(p, "id")),
+      "agents.steer": (p) => this.agents.steer(req(p, "id"), req(p, "text"), p.mode ?? "next"),
+      "agents.takeover": (p) => this.collab.takeover(req(p, "from"), req(p, "to"), { taskId: p.taskId, note: p.note }),
       "agents.prompt": (p) => {
         const id = req(p, "id");
         const agent = this.store.getAgent(id);

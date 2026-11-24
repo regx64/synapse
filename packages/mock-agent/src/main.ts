@@ -178,7 +178,9 @@ async function run(sessionId: string, cwd: string, step: Step, mcpServers: McpSe
   } else if ("plan" in step) {
     update(sessionId, { sessionUpdate: "plan", entries: step.plan.map((content) => ({ content, status: "pending", priority: "medium" })) });
   } else if ("sleep" in step) {
-    await new Promise((r) => setTimeout(r, step.sleep));
+    // Like a real agent, stop waiting as soon as the turn is cancelled.
+    const until = Date.now() + step.sleep;
+    while (Date.now() < until && !sessions.get(sessionId)?.cancelled) await new Promise((r) => setTimeout(r, Math.min(50, until - Date.now())));
   } else if ("write" in step || "edit" in step) {
     const rel = "write" in step ? step.write.path : step.edit.path;
     const abs = path.resolve(cwd, rel);

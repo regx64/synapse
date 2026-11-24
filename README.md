@@ -44,6 +44,9 @@ replaces only the UI. See [the plan](docs/plan.md).
 - **Task graph.** Split a goal into tasks, assign them, set dependencies.
   Finishing a task hands off to the next agent with the files and symbols it
   changed; dependent tasks can start automatically.
+- **Steering and takeover.** Give a working agent guidance without starting
+  over (after its turn, or interrupting it), or hand its unfinished work,
+  task and context to another agent when it is stuck or out of credit.
 - **Structured messages and a decision log.** Agents message each other and
   propose decisions through a Synapse MCP server; their text is delivered as
   data, and anything that reads like instructions is held for you. Accepted

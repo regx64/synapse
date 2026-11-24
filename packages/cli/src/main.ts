@@ -31,7 +31,10 @@ Agents
   agent add --command CMD [--arg A]... --id ID
   agent start|stop|restart|remove|reset <id>
   agent prompt <id> <text...> [--wait]
+  agent steer <id> <text...> [--now] guidance while it works: after this turn, or interrupt now
   agent cancel <id>
+  takeover <from> <to> [--task ID] [--note TEXT]
+                                     <to> continues <from>'s unfinished work (changes and task move)
 
 Coordination
   status                             the collaboration board
@@ -93,6 +96,9 @@ async function main(argv: string[]): Promise<number> {
       arg: { type: "string", multiple: true },
       start: { type: "boolean" },
       wait: { type: "boolean" },
+      now: { type: "boolean" },
+      note: { type: "string" },
+      task: { type: "string" },
       agent: { type: "string" },
       agents: { type: "string" },
       check: { type: "boolean" },
@@ -202,6 +208,11 @@ async function run(c: SynapseClient, cmd: string, sub: string | undefined, rest:
         return 0;
       }
       const id = need(rest[0], "agent id");
+      if (action === "steer") {
+        const a = await c.call("agents.steer", { id, text: need(rest.slice(1).join(" "), "guidance"), mode: v.now ? "now" : "next" });
+        out(a, () => (a.guidance?.length ? `${a.id}: ${a.guidance.length} guidance item(s) ${v.now ? "now (interrupting)" : "after this turn"}` : `${a.id} was idle: sent as a prompt`));
+        return 0;
+      }
       if (action === "prompt") {
         const text = need(rest.slice(1).join(" "), "prompt text");
         if (!v.wait) {
@@ -340,6 +351,11 @@ async function run(c: SynapseClient, cmd: string, sub: string | undefined, rest:
       const m = action === "release" ? await c.call("messages.release", { id }) : action === "reject" ? await c.call("messages.reject", { id }) : undefined;
       if (!m) throw new Error(`Unknown message action: ${action}`);
       out(m, () => `${m.id}: ${m.status}`);
+      return 0;
+    }
+    case "takeover": {
+      const r = await c.call("agents.takeover", { from: need(sub, "from agent"), to: need(rest[0], "to agent"), taskId: v.task as string | undefined, note: v.note as string | undefined });
+      out(r, () => `${r.to.id} took over ${r.task ? `${r.task.id} (${r.task.title})` : "the request"} from ${r.from.id}: ${r.files.length} file(s) moved, kept at ${r.commit.slice(0, 10)}`);
       return 0;
     }
     case "decisions": {

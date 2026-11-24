@@ -1,12 +1,12 @@
 import * as fs from "node:fs";
 import * as fsp from "node:fs/promises";
 import * as path from "node:path";
-import type { AgentMessage, AgentOwnership, Decision, DecisionPin, MessageKind, Task, TaskStatus } from "@synapse/protocol";
+import type { AgentMessage, AgentOwnership, Decision, DecisionPin, MessageKind, TakeoverResult, Task, TaskStatus } from "@synapse/protocol";
 import { ErrorCodes, RpcError } from "@synapse/protocol";
 import type { AgentManager } from "./agents.js";
 import { checkAnchors, createAnchor, normalizePin, pinLabel, samePin, symbolAtLine } from "./anchors.js";
 import type { SynapseConfig } from "./config.js";
-import { revParse } from "./git.js";
+import { git, revParse } from "./git.js";
 import { matchesAny } from "./policy.js";
 import { parseSource } from "./symbols.js";
 import { redact } from "./redact.js";
@@ -252,6 +252,89 @@ export class CollabService {
     if (deps.length) lines.push("", `This task builds on: ${deps.map((d) => `${d.id} "${d.title}"`).join("; ")}. Their handoffs are below.`);
     lines.push("", "When you finish, end with a short summary of what you changed and anything the next agent should know.");
     return lines.join("\n");
+  }
+
+  /**
+   * Hands one agent's unfinished work to another: `from` is stopped where it
+   * is, its work (uncommitted changes included) moves into `to`'s worktree,
+   * the task is reassigned, and `to` continues it with a summary of what was
+   * done. The moved work is also kept at refs/synapse/takeovers/….
+   */
+  async takeover(fromId: string, toId: string, opts: { taskId?: string; note?: string } = {}): Promise<TakeoverResult> {
+    const agents = this.deps.agents;
+    const from = this.store.getAgent(fromId);
+    const to = this.store.getAgent(toId);
+    if (!from) throw new RpcError(ErrorCodes.NotFound, `No agent "${fromId}"`);
+    if (!to) throw new RpcError(ErrorCodes.NotFound, `No agent "${toId}"`);
+    if (fromId === toId) throw new RpcError(ErrorCodes.InvalidParams, "An agent cannot take over its own work");
+    if (to.status !== "idle") throw new RpcError(ErrorCodes.Conflict, `${to.name} must be running and idle to take over (it is ${to.status})`);
+    if (to.currentTaskId) throw new RpcError(ErrorCodes.Conflict, `${to.name} is on task ${to.currentTaskId}`);
+    const toOwn = await this.deps.refreshOwnership(toId);
+    if (toOwn?.files.length) throw new RpcError(ErrorCodes.Conflict, `${to.name} has changes of its own (${toOwn.files.length} file(s)). Merge or reset them first.`);
+
+    // What moves: a task, or else the request the agent was working on.
+    const t = opts.taskId
+      ? this.requireTask(opts.taskId)
+      : from.currentTaskId
+        ? this.store.getTask(from.currentTaskId)
+        : this.store
+            .listTasks()
+            .filter((x) => x.agentId === fromId && x.startedAt && (x.status === "in_progress" || x.status === "todo" || x.status === "failed"))
+            .sort((a, b) => (b.startedAt ?? "").localeCompare(a.startedAt ?? ""))[0];
+    if (t && t.agentId !== fromId) throw new RpcError(ErrorCodes.Conflict, `Task ${t.id} is not ${from.name}'s`);
+    if (t?.status === "done" || t?.status === "review") throw new RpcError(ErrorCodes.Conflict, `Task ${t.id} is ${t.status}; nothing to take over`);
+    const request = t ? undefined : from.turn?.prompt;
+    if (!t && !request) throw new RpcError(ErrorCodes.Conflict, `${from.name} has no task or request to take over`);
+    const why = from.status === "error" || from.error ? `it stopped with an error (${from.error ?? "unknown"})` : "the person handed the work over";
+    const plan = from.plan ?? [];
+    const lastMessage = from.lastMessage ?? "";
+
+    // 1. Stop `from` where it is; its turn end belongs to this takeover.
+    agents.holdForTakeover(fromId, true);
+    try {
+      if (from.status === "working" || from.status === "awaiting-approval") {
+        agents.cancel(fromId);
+        if (!(await agents.waitForTurnEnd(fromId, 20_000))) await agents.stop(fromId); // ignores cancel: stop it
+      }
+      this.store.updateAgent(fromId, { currentTaskId: undefined, guidance: undefined });
+
+      // 2. Move the work.
+      const own = await this.deps.refreshOwnership(fromId);
+      const commit = own?.snapshot ?? (await revParse(from.worktree.path, "HEAD"));
+      const files = own?.files.map((f) => f.path) ?? [];
+      const symbols = own?.files.flatMap((f) => f.symbols.map((x) => `${f.path}::${x.name}`)) ?? [];
+      await git(this.store.repoRoot, ["update-ref", `refs/synapse/takeovers/${fromId}-to-${toId}-${Date.now()}`, commit]);
+      const fromNow = this.store.getAgent(fromId)!;
+      await agents.adoptWork(toId, commit, fromNow.worktree);
+      await agents.releaseWork(fromId);
+
+      // 3. Reassign the task and brief the new agent.
+      let task: Task | undefined;
+      if (t) task = this.store.putTask({ ...t, agentId: toId, status: "in_progress", startedAt: t.startedAt ?? nowIso(), endedAt: undefined, outOfScope: undefined });
+      const subject = t ? `Takeover of ${t.id}: ${t.title}` : `Takeover of ${from.name}'s request`;
+      const body = [
+        `${from.name} stopped partway: ${why}.`,
+        plan.length ? `Their plan:\n${plan.map((p) => `[${p.status}] ${p.content}`).join("\n")}` : "",
+        lastMessage ? `Their last message:\n${lastMessage.slice(-1500)}` : "",
+      ]
+        .filter(Boolean)
+        .join("\n\n");
+      this.send(fromId, { to: toId, kind: "handoff", taskId: t?.id, subject, body, files, symbols });
+      const intro = [
+        `You are taking over ${t ? `task ${t.id}` : "a request"} from ${from.name}, who stopped partway. Their work so far is already in your worktree, uncommitted changes included${files.length ? ` (${files.length} file(s): ${files.slice(0, 20).join(", ")}${files.length > 20 ? ", …" : ""})` : ""}.`,
+        "Look at what is there before changing anything, keep what is done, and finish the rest.",
+        opts.note?.trim() ? `\nNote from the person: ${opts.note.trim().slice(0, BODY_LIMIT)}` : "",
+        "",
+        t ? this.taskPrompt(t) : `The request ${from.name} was working on:\n${request}`,
+      ].join("\n");
+      const prompt = this.composePrompt(toId, intro, !!t);
+      agents.prompt(toId, prompt);
+      if (t) this.store.updateAgent(toId, { currentTaskId: t.id });
+      this.deps.log(`${toId} took over ${t ? t.id : "a request"} from ${fromId} (${files.length} file(s), ${commit.slice(0, 10)})`);
+      return { from: this.store.getAgent(fromId)!, to: this.store.getAgent(toId)!, task: task && this.store.getTask(task.id), commit, files };
+    } finally {
+      agents.holdForTakeover(fromId, false);
+    }
   }
 
   private handOff(t: Task): void {

@@ -54,6 +54,36 @@ synapse tasks
 synapse task done t-1
 ```
 
+## Steering and handing off
+
+**Guidance while an agent works.** Type in an agent's card while it is busy
+and choose **After this turn** (it finishes, then continues with your
+guidance) or **Interrupt now** (the turn stops and continues with it at
+once). Either way it continues the same work: its task stays in progress, and
+nothing it already did is undone. The card shows guidance that is waiting and
+how many times a turn was steered.
+
+```bash
+synapse agent steer claude "Keep the public API unchanged"
+```
+
+```bash
+synapse agent steer claude "Stop: use integer cents" --now
+```
+
+**Handing work to another agent.** When an agent is stuck, out of credit, or
+simply the wrong one for the job, **Hand off…** moves its unfinished work to
+another agent: the first agent is stopped where it is, its changes (committed
+or not) move into the other agent's worktree, its task is reassigned, and the
+new agent is told what was done (files, the old plan, the last message, and
+your note) and continues from there. The agent taking over must be running,
+idle and without changes of its own. The moved work is also kept at
+`refs/synapse/takeovers/…`.
+
+```bash
+synapse takeover claude codex --note "The tests in cart.test.ts still fail"
+```
+
 ## Messages between agents
 
 Messages are structured: kind (handoff, question, answer, note, blocker),
