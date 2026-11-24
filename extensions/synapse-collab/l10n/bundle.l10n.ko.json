@@ -43,6 +43,7 @@
   "Synapse held a message from {0}: \"{1}\". Review it on the home tab.": "Synapse가 {0}의 메시지 \"{1}\"을(를) 보류했습니다. 홈 탭에서 확인하세요.",
   "Synapse team sync: {0}": "Synapse 팀 동기화: {0}",
   "Synapse: created task {0} for this agent.": "Synapse: 이 에이전트의 작업 {0}을(를) 만들었습니다.",
+  "Synapse: created {0} tasks.": "Synapse: 작업 {0}개를 만들었습니다.",
   "Synapse: created {0}. Add details and dependencies on the home tab's Tasks.": "Synapse: {0}을(를) 만들었습니다. 홈 탭의 작업에서 설명과 선행 작업을 추가하세요.",
   "Synapse: creating worktree and starting agent…": "Synapse: 작업 공간을 만들고 에이전트를 시작하는 중…",
   "Synapse: merged into {0}.": "Synapse: {0}에 병합했습니다.",

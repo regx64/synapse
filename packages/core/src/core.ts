@@ -23,6 +23,7 @@ import { StateStore } from "./store.js";
 import { TranscriptStore } from "./transcripts.js";
 import { tellAboutConflict } from "./conflict-help.js";
 import { AgentTestService } from "./agent-tests.js";
+import { GoalService } from "./goals.js";
 import { debounce, KeyedSerializer } from "./util.js";
 import { WorktreeManager } from "./worktrees.js";
 
@@ -61,6 +62,7 @@ export class SynapseCore {
   readonly comments: CommentService;
   readonly transcripts: TranscriptStore;
   readonly agentTests: AgentTestService;
+  readonly goals: GoalService;
   readonly team: TeamService;
   readonly collab: CollabService;
   /** Where the API is served; set by serve(). Agents' MCP servers connect back here. */
@@ -95,6 +97,7 @@ export class SynapseCore {
         void this.collab
           .onTurnEnd(id, stopReason, error)
           .catch((e: Error) => this.log(`task update failed: ${e.message}`))
+          .then(() => this.goals.onTurnEnd(id, stopReason, error))
           .then(() => this.agentTests.onTurnEnd(id, stopReason))
           .catch((e: Error) => this.log(`tests for ${id} failed to run: ${e.message}`));
       },
@@ -109,6 +112,7 @@ export class SynapseCore {
     });
     this.transcripts = new TranscriptStore(this.store);
     this.agentTests = new AgentTestService({ store: this.store, agents: this.agents, config: () => this.config, refreshOwnership: (id) => this.ownership.refresh(id), log: this.log });
+    this.goals = new GoalService({ store: this.store, agents: this.agents, collab: this.collab });
     this.comments = new CommentService({ store: this.store, agents: this.agents, collab: this.collab, ownership: this.ownership });
     this.team = new TeamService({ store: this.store, config: () => this.config, log: this.log, onPeersChanged: () => this.scheduleConflictCheck() });
     this.reviews = new ReviewService({
@@ -354,6 +358,9 @@ export class SynapseCore {
       },
       "tasks.start": (p) => this.collab.startTask(req(p, "id")),
       "tasks.setStatus": (p) => this.collab.setStatus(req(p, "id"), req(p, "status")),
+      "goals.split": (p) => this.goals.split(req(p, "goal"), req(p, "agentId")),
+      "goals.accept": (p) => this.goals.accept(req(p, "id"), p.tasks, { autoStart: p.autoStart, planFirst: p.planFirst }),
+      "goals.discard": (p) => this.goals.discard(req(p, "id")),
       "tasks.approvePlan": (p) => this.collab.approvePlan(req(p, "id"), p.plan),
       "tasks.revisePlan": (p) => this.collab.revisePlan(req(p, "id"), req(p, "feedback")),
       "messages.list": (p) => this.collab.listMessages(p?.agentId),

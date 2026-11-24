@@ -7,7 +7,7 @@ const T = "2026-11-24T10:00:00.000Z";
 const NOW = Date.parse("2026-11-24T12:00:00.000Z");
 
 function state(over: Partial<Omit<CoreState, "alerts">>): Omit<CoreState, "alerts"> {
-  return { version: "0", repoRoot: "/r", baseRef: "main", agents: [], ownership: {}, conflicts: [], approvals: [], reviews: [], tasks: [], messages: [], decisions: [], comments: [], audit: [], seq: 1, team: { enabled: false, person: "me", role: "editor", remote: "origin", peers: [], claimsOnMe: [] }, ...over };
+  return { version: "0", repoRoot: "/r", baseRef: "main", agents: [], ownership: {}, conflicts: [], approvals: [], reviews: [], tasks: [], messages: [], decisions: [], comments: [], goals: [], audit: [], seq: 1, team: { enabled: false, person: "me", role: "editor", remote: "origin", peers: [], claimsOnMe: [] }, ...over };
 }
 
 test("only actionable items become alerts, most urgent first", () => {

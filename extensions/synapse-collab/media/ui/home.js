@@ -112,6 +112,7 @@
     "team-claim": ["users", "info"],
     "tests-failed": ["alert", "error"],
     "plan-review": ["task", "needs"],
+    "goal-split": ["list", "info"],
   };
 
   /** The alert's title in the person's language, built from state; the core's English title if the item is gone. */
@@ -151,6 +152,11 @@
       case "risky-command": {
         const n = Number((a.title.match(/^\d+/) || ["0"])[0]);
         return n ? t("alert.risky", n) : a.title;
+      }
+      case "goal-split": {
+        const g = (state.goals || []).find((y) => y.id === a.ref);
+        if (!g) return a.title;
+        return g.status === "proposed" ? t("alert.goalProposed", nameOf(state, g.agentId), g.tasks.length) : t("alert.goalFailed", nameOf(state, g.agentId));
       }
       case "plan-review": {
         const x = state.tasks.find((y) => y.id === a.ref);
@@ -233,6 +239,8 @@
         return [button(t("review.merge"), () => cmd("synapse.prepareReview"), "primary"), a.agentId ? button(t("needs.seeChanges"), () => post("select", { id: a.agentId, show: "diff" })) : null, button(t("needs.markDone"), () => post("taskAction", { id: a.ref, action: "done" }), "ghost")];
       case "risky-command":
         return [button(t("needs.details"), () => go("audit"))];
+      case "goal-split":
+        return [button(t("goal.review"), () => go("tasks"), "primary"), button(t("goal.discard"), () => post("discardGoal", { id: a.ref }), "ghost")];
       case "plan-review":
         return [button(t("plan.review"), () => go("tasks"), "primary"), button(t("plan.approveAsIs"), () => post("approvePlan", { id: a.ref }))];
       case "tests-failed":
@@ -357,7 +365,68 @@
   // ---------------------------------------------------------------------------
   // Tasks
 
+  /** Split a goal with an agent: the form, then each proposal to edit and accept. */
+  function renderGoals(page, state) {
+    const goal = /** @type {HTMLTextAreaElement} */ (h("textarea", { rows: 2, placeholder: t("goal.ph"), "aria-label": t("goal.label") }));
+    const running = state.agents.filter((a) => a.status === "idle");
+    const who = /** @type {HTMLSelectElement} */ (h("select", { "aria-label": t("goal.agent") }, running.map((a) => h("option", { value: a.id }, [a.name]))));
+    page.append(
+      h("details", { class: "card card-pad form", open: (state.goals || []).some((g) => g.status === "proposed") || undefined }, [
+        h("summary", { class: "strong" }, [t("goal.title")]),
+        h("div", { class: "col" }, [
+          h("p", { class: "small fg2" }, [t("goal.intro")]),
+          goal,
+          h("div", { class: "row wrap" }, [
+            h("span", { class: "small muted" }, [t("goal.agent")]),
+            running.length ? h("div", { style: { width: "180px" } }, [who]) : h("span", { class: "small muted" }, [t("goal.noIdle")]),
+            button(t("goal.split"), () => (goal.value.trim() && who.value ? post("splitGoal", { goal: goal.value, agentId: who.value }) : goal.focus()), "primary", { disabled: !running.length || undefined }),
+          ]),
+        ]),
+      ]),
+    );
+    for (const g of (state.goals || []).filter((x) => x.status === "splitting" || x.status === "proposed" || x.status === "failed")) page.append(goalCard(g, state));
+  }
+
+  function goalCard(g, state) {
+    const head = h("div", { class: "row" }, [dot(colorOf(state, g.agentId), "sm"), h("span", { class: "strong grow ell" }, [g.goal]), h("button", { class: "link", onclick: () => post("discardGoal", { id: g.id }) }, [t("goal.discard")])]);
+    if (g.status === "splitting") return h("div", { class: "card card-pad col" }, [head, h("div", { class: "row small muted" }, [h("span", { class: "dot sm pulse", style: { background: "var(--sy-working)" } }), t("goal.splitting", nameOf(state, g.agentId))])]);
+    if (g.status === "failed") return h("div", { class: "card card-pad col" }, [head, h("div", { class: "small error-text" }, [t("goal.failed", g.error || "")])]);
+    const rows = g.tasks.map((x) => {
+      const keep = /** @type {HTMLInputElement} */ (h("input", { type: "checkbox", checked: true, "aria-label": t("goal.keep") }));
+      const title = /** @type {HTMLInputElement} */ (h("input", { value: x.title, "aria-label": t("task.title") }));
+      const agent = /** @type {HTMLSelectElement} */ (h("select", { "aria-label": t("agent") }, [h("option", { value: "" }, [t("tasks.unassigned")]), ...state.agents.map((a) => h("option", { value: a.id, selected: a.id === x.agentId || undefined }, [a.name]))]));
+      const el = h("div", { class: "goal-row" }, [
+        keep,
+        h("div", { class: "col tight grow" }, [
+          title,
+          x.description ? h("div", { class: "tiny fg2 clamp" }, [x.description]) : null,
+          h("div", { class: "tiny muted" }, [[x.dependsOn.length ? t("goal.after", x.dependsOn.map((d) => (g.tasks.find((y) => y.key === d) || { title: d }).title).join(", ")) : "", x.scope.length ? t("task.scopeIs", x.scope.join(", ")) : ""].filter(Boolean).join(" · ")]),
+        ]),
+        h("div", { style: { width: "150px" } }, [agent]),
+      ]);
+      return { el, value: () => (keep.checked ? { ...x, title: title.value.trim() || x.title, agentId: agent.value || undefined } : undefined) };
+    });
+    const auto = /** @type {HTMLInputElement} */ (h("input", { type: "checkbox", id: `auto-${g.id}` }));
+    const planFirst = /** @type {HTMLInputElement} */ (h("input", { type: "checkbox", id: `plan-${g.id}` }));
+    return h("div", { class: "card card-pad col goal" }, [
+      head,
+      h("div", { class: "small st-needs" }, [t("goal.proposed", nameOf(state, g.agentId), g.tasks.length)]),
+      ...rows.map((r) => r.el),
+      h("div", { class: "row wrap" }, [
+        h("label", { class: "row small", for: `auto-${g.id}` }, [auto, t("task.autoStart")]),
+        h("label", { class: "row small", for: `plan-${g.id}` }, [planFirst, t("task.planFirst")]),
+        h("span", { class: "spacer" }),
+        button(t("goal.accept"), () => {
+          const tasks = rows.map((r) => r.value()).filter(Boolean);
+          const kept = new Set(tasks.map((x) => x.key));
+          post("acceptGoal", { id: g.id, tasks: tasks.map((x) => ({ ...x, dependsOn: x.dependsOn.filter((d) => kept.has(d)) })), autoStart: auto.checked, planFirst: planFirst.checked });
+        }, "primary"),
+      ]),
+    ]);
+  }
+
   function renderTasks(page, state) {
+    renderGoals(page, state);
     const title = /** @type {HTMLInputElement} */ (h("input", { placeholder: t("task.titlePh"), "aria-label": t("task.title") }));
     const desc = /** @type {HTMLTextAreaElement} */ (h("textarea", { rows: 2, placeholder: t("task.descPh"), "aria-label": t("task.desc") }));
     const agent = /** @type {HTMLSelectElement} */ (h("select", { "aria-label": t("agent") }, [h("option", { value: "" }, [t("tasks.unassigned")]), ...state.agents.map((a) => h("option", { value: a.id }, [a.name]))]));

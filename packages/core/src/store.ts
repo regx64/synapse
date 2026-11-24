@@ -11,6 +11,7 @@ import type {
   Conflict,
   CodeComment,
   Decision,
+  GoalSplit,
   TeamState,
   Task,
   CoreEvent,
@@ -33,6 +34,7 @@ interface PersistedState {
   messages?: AgentMessage[];
   decisions?: Decision[];
   comments?: CodeComment[];
+  goals?: GoalSplit[];
   audit?: AuditEntry[];
 }
 
@@ -56,6 +58,7 @@ export class StateStore extends EventEmitter {
   private readonly tasks = new Map<string, Task>();
   private readonly messages = new Map<string, AgentMessage>();
   private readonly decisions = new Map<string, Decision>();
+  private readonly goals = new Map<string, GoalSplit>();
   private readonly comments = new Map<string, CodeComment>();
   private team: TeamState = { enabled: false, person: "", role: "editor", remote: "origin", peers: [], claimsOnMe: [] };
   private audit: AuditEntry[] = [];
@@ -108,6 +111,7 @@ export class StateStore extends EventEmitter {
       messages: this.listMessages(),
       decisions: this.listDecisions(),
       comments: this.listComments(),
+      goals: this.listGoals(),
       audit: this.audit.slice(-200),
       seq: this.seq,
     };
@@ -292,6 +296,25 @@ export class StateStore extends EventEmitter {
     return d;
   }
 
+  listGoals(): GoalSplit[] {
+    return [...this.goals.values()];
+  }
+
+  getGoal(id: string): GoalSplit | undefined {
+    return this.goals.get(id);
+  }
+
+  putGoal(g: GoalSplit): GoalSplit {
+    g.updatedAt = nowIso();
+    this.goals.set(g.id, g);
+    // Keep the open ones and the 20 most recent others.
+    const closed = [...this.goals.values()].filter((x) => x.status !== "splitting" && x.status !== "proposed");
+    for (const old of closed.slice(0, Math.max(0, closed.length - 20))) this.goals.delete(old.id);
+    this.emitEvent("goal.updated", g);
+    this.persistSoon();
+    return g;
+  }
+
   /** Where per-repository files other than state.json go (undefined when ephemeral). */
   get dataDir(): string | undefined {
     return this.stateFile ? path.dirname(this.stateFile) : undefined;
@@ -354,6 +377,7 @@ export class StateStore extends EventEmitter {
     for (const m of data.messages ?? []) this.messages.set(m.id, m);
     for (const d of data.decisions ?? []) this.decisions.set(d.id, d);
     for (const c of data.comments ?? []) this.comments.set(c.id, c);
+    for (const g of data.goals ?? []) this.goals.set(g.id, g.status === "splitting" ? { ...g, status: "failed", error: "Synapse restarted while the agent was splitting the goal" } : g);
     this.audit = data.audit ?? [];
   }
 
@@ -368,6 +392,7 @@ export class StateStore extends EventEmitter {
       messages: this.listMessages(),
       decisions: this.listDecisions(),
       comments: this.listComments(),
+      goals: this.listGoals(),
       audit: this.audit.slice(-500),
     };
     fs.mkdirSync(path.dirname(this.stateFile), { recursive: true });

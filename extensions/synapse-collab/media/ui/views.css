@@ -132,3 +132,5 @@
 .tests .output { margin-top: 6px; max-height: 260px; overflow: auto; }
 .plan-review { border: 1px solid color-mix(in srgb, var(--sy-needs) 45%, transparent); background: color-mix(in srgb, var(--sy-needs) 6%, transparent); border-radius: 8px; padding: 10px 12px; gap: 8px; }
 .plan-review textarea { font-family: var(--sy-mono); font-size: 12px; }
+.goal-row { display: flex; gap: 10px; align-items: flex-start; padding: 6px 0; border-top: 1px solid var(--sy-line); }
+.goal-row > input[type="checkbox"] { margin-top: 8px; }

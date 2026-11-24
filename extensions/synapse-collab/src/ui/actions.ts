@@ -29,7 +29,10 @@ export type ViewMessage =
   | { type: "rewind"; id: string; n: number }
   | { type: "runTests"; id: string }
   | { type: "approvePlan"; id: string; plan?: string }
-  | { type: "revisePlan"; id: string; feedback: string };
+  | { type: "revisePlan"; id: string; feedback: string }
+  | { type: "splitGoal"; goal: string; agentId: string }
+  | { type: "acceptGoal"; id: string; tasks?: import("@synapse/client").ProposedTask[]; autoStart?: boolean; planFirst?: boolean }
+  | { type: "discardGoal"; id: string };
 
 /** Commands a webview may run through `{ type: "command" }`. */
 const ALLOWED_COMMANDS = new Set([
@@ -154,6 +157,17 @@ export async function handleViewMessage(m: ViewMessage, conn: CoreConnection, se
         return;
       case "revisePlan":
         await conn.call("tasks.revisePlan", { id: m.id, feedback: m.feedback });
+        return;
+      case "splitGoal":
+        await conn.call("goals.split", { goal: m.goal, agentId: m.agentId });
+        return;
+      case "acceptGoal": {
+        const created = await conn.call("goals.accept", { id: m.id, tasks: m.tasks, autoStart: m.autoStart, planFirst: m.planFirst });
+        void vscode.window.showInformationMessage(l("Synapse: created {0} tasks.", created.length));
+        return;
+      }
+      case "discardGoal":
+        await conn.call("goals.discard", { id: m.id });
         return;
       case "dismissChecklist":
         await context.workspaceState.update("synapse.checklistDismissed", true);

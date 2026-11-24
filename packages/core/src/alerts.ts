@@ -95,6 +95,19 @@ export function computeAlerts(s: Omit<CoreState, "alerts">, now = Date.now()): A
       at: last.at,
     });
   }
+  for (const g of s.goals ?? []) {
+    if (g.status !== "proposed" && g.status !== "failed") continue;
+    out.push({
+      id: `goal-split:${g.id}`,
+      kind: "goal-split",
+      level: "action",
+      title: g.status === "proposed" ? `${name(g.agentId)} split a goal into ${g.tasks.length} tasks` : `${name(g.agentId)} could not split a goal`,
+      detail: g.status === "failed" ? g.error : g.goal.slice(0, 200),
+      agentId: g.agentId,
+      ref: g.id,
+      at: g.updatedAt,
+    });
+  }
   for (const a of s.agents) {
     if (a.tests?.status !== "failed") continue;
     out.push({

@@ -77,6 +77,11 @@ window.SYNAPSE_STRINGS = {
     "plan.proposed": "Plan to approve", "plan.proposedAgain": "Revised plan to approve (round {0})", "plan.changedFiles": "The agent changed files while it should only have planned. You can rewind it from its conversation.",
     "plan.approve": "Approve and start", "plan.approveAsIs": "Approve as is", "plan.review": "Review plan", "plan.revise": "Ask for changes", "plan.feedback": "What should change", "plan.feedbackPh": "What should change in the plan?",
     "alert.planReview": "{0} plan to approve: {1}",
+    "goal.title": "Split a goal with an agent", "goal.intro": "Describe the goal. An agent looks at the code (without changing it) and proposes tasks, dependencies and who should do each; you edit and accept.",
+    "goal.ph": "e.g. Store money as integer cents everywhere", "goal.label": "Goal", "goal.agent": "Agent that splits it", "goal.noIdle": "No idle agent: start one first.", "goal.split": "Split into tasks",
+    "goal.splitting": "{0} is splitting the goal…", "goal.failed": "Could not split it: {0}", "goal.discard": "Discard", "goal.keep": "Keep this task", "goal.after": "after {0}",
+    "goal.proposed": "{0} proposes {1} tasks. Untick what you don't want, edit titles and agents, then accept.", "goal.accept": "Create tasks", "goal.review": "Review tasks",
+    "alert.goalProposed": "{0} split a goal into {1} tasks", "alert.goalFailed": "{0} could not split a goal",
     "stop.cancelled": "Turn stopped", "stop.refusal": "The agent declined", "stop.max_tokens": "Stopped: output limit reached", "stop.max_turn_requests": "Stopped: step limit reached",
   },
   ko: {
@@ -154,6 +159,11 @@ window.SYNAPSE_STRINGS = {
     "plan.proposed": "승인할 계획", "plan.proposedAgain": "수정된 계획 ({0}번째)", "plan.changedFiles": "에이전트가 계획만 세워야 할 때 파일을 바꿨습니다. 대화 화면에서 되돌릴 수 있습니다.",
     "plan.approve": "승인하고 시작", "plan.approveAsIs": "그대로 승인", "plan.review": "계획 보기", "plan.revise": "수정 요청", "plan.feedback": "바꿀 점", "plan.feedbackPh": "계획에서 무엇을 바꿀까요?",
     "alert.planReview": "{0} 계획 승인 대기: {1}",
+    "goal.title": "에이전트와 목표 나누기", "goal.intro": "목표를 적으세요. 에이전트가 코드를 (바꾸지 않고) 살펴보고 작업, 선행 관계, 담당자를 제안합니다. 고친 뒤 승인하면 됩니다.",
+    "goal.ph": "예: 모든 곳에서 금액을 정수 센트로 저장", "goal.label": "목표", "goal.agent": "나눌 에이전트", "goal.noIdle": "대기 중인 에이전트가 없습니다. 먼저 시작하세요.", "goal.split": "작업으로 나누기",
+    "goal.splitting": "{0}이(가) 목표를 나누는 중…", "goal.failed": "나누지 못했습니다: {0}", "goal.discard": "버리기", "goal.keep": "이 작업 유지", "goal.after": "{0} 다음",
+    "goal.proposed": "{0}이(가) 작업 {1}개를 제안했습니다. 원하지 않는 것은 체크를 풀고, 제목과 담당자를 고친 뒤 만드세요.", "goal.accept": "작업 만들기", "goal.review": "작업 보기",
+    "alert.goalProposed": "{0}이(가) 목표를 작업 {1}개로 나눴습니다", "alert.goalFailed": "{0}이(가) 목표를 나누지 못했습니다",
     "stop.cancelled": "턴을 중지했습니다", "stop.refusal": "에이전트가 거절했습니다", "stop.max_tokens": "중지: 출력 한도 도달", "stop.max_turn_requests": "중지: 단계 한도 도달",
   },
 };

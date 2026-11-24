@@ -391,6 +391,34 @@ export interface Task {
   endedAt?: string;
 }
 
+/** A task an agent proposed while splitting a goal. Agent output: data, validated. */
+export interface ProposedTask {
+  /** The agent's handle for the task, used by dependsOn. */
+  key: string;
+  title: string;
+  description: string;
+  /** Keys of proposed tasks this one needs first. */
+  dependsOn: string[];
+  scope: string[];
+  /** Suggested agent (an existing agent id), if any. */
+  agentId?: string;
+}
+
+/** A goal an agent is splitting, or has split, into tasks for the person to accept. */
+export interface GoalSplit {
+  id: string;
+  goal: string;
+  /** The agent doing the splitting. */
+  agentId: string;
+  status: "splitting" | "proposed" | "accepted" | "discarded" | "failed";
+  tasks: ProposedTask[];
+  /** Task ids created when accepted. */
+  createdTasks?: string[];
+  error?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface TaskPlan {
   state: "drafting" | "proposed" | "approved";
   /** The plan: the agent's plan entries or its message; the person may edit it before approving. Agent output: data. */
@@ -606,7 +634,8 @@ export type AlertKind =
   | "risky-command"
   | "team-claim"
   | "tests-failed"
-  | "plan-review";
+  | "plan-review"
+  | "goal-split";
 
 /** Something the person should act on. Derived from state; it goes away when acted on. */
 export interface Alert {
@@ -639,6 +668,8 @@ export interface CoreState {
   messages: AgentMessage[];
   decisions: Decision[];
   comments: CodeComment[];
+  /** Goals being split into tasks by an agent, and recent results. */
+  goals: GoalSplit[];
   /** What needs the person now, most urgent first. */
   alerts: Alert[];
   team: TeamState;
@@ -662,6 +693,7 @@ export type CoreEventType =
   | "message.updated"
   | "decision.updated"
   | "comment.updated"
+  | "goal.updated"
   | "team.updated"
   | "audit.added"
   | "core.log";
@@ -873,6 +905,11 @@ export interface CoreMethods {
   /** The person's verdict. "done" hands off to dependent tasks and may auto-start them. */
   "tasks.setStatus": { params: { id: string; status: TaskStatus }; result: Task };
   /** Approves a proposed plan (optionally edited) and lets the agent carry it out. */
+  /** Asks an agent to split a goal into tasks (it changes no files); the result waits for the person. */
+  "goals.split": { params: { goal: string; agentId: string }; result: GoalSplit };
+  /** Creates the proposed tasks (optionally edited, a subset, or with other agents) with their dependencies. */
+  "goals.accept": { params: { id: string; tasks?: ProposedTask[]; autoStart?: boolean; planFirst?: boolean }; result: Task[] };
+  "goals.discard": { params: { id: string }; result: GoalSplit };
   "tasks.approvePlan": { params: { id: string; plan?: string }; result: Task };
   /** Sends the plan back to the agent with the person's feedback; it plans again. */
   "tasks.revisePlan": { params: { id: string; feedback: string }; result: Task };

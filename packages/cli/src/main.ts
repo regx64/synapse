@@ -59,6 +59,8 @@ Tasks (the person splits a goal and assigns subtasks)
   task add <title> [--agent ID] [--after t-1,t-2] [--scope GLOB,..] [--auto] [--plan-first] [--description TEXT]
   task start|done|fail|review|todo|rm <task-id>
   task plan <task-id> [approve [--plan TEXT] | revise <feedback>]
+  goal split <goal> --agent ID       an agent proposes tasks for a goal (changes no files)
+  goal show|accept|discard <goal-id> [--auto] [--plan-first]
 
 Messages and decisions
   messages [--agent ID]              structured messages between agents
@@ -305,6 +307,29 @@ async function run(c: SynapseClient, cmd: string, sub: string | undefined, rest:
       const r = await c.call("review.prepare", { agents, runTests: !v["no-tests"] });
       out(r, () => renderReview(r));
       return r.status === "ready" ? 0 : 2;
+    }
+    case "goal": {
+      const action = need(sub, "goal action");
+      if (action === "split") {
+        const g = await c.call("goals.split", { goal: need(rest.join(" "), "goal"), agentId: need(v.agent as string | undefined, "--agent") });
+        out(g, () => `${g.id}: ${g.agentId} is splitting the goal; see it with: synapse goal show ${g.id}`);
+        return 0;
+      }
+      const id = need(rest[0], "goal id");
+      if (action === "accept") {
+        const tasks = await c.call("goals.accept", { id, autoStart: !!v.auto, planFirst: !!v["plan-first"] });
+        out(tasks, () => tasks.map((t) => `added ${t.id}: ${t.title}${t.agentId ? ` → ${t.agentId}` : ""}${t.dependsOn.length ? ` (after ${t.dependsOn.join(", ")})` : ""}`).join("\n"));
+        return 0;
+      }
+      if (action === "discard") {
+        const g = await c.call("goals.discard", { id });
+        out(g, () => `${g.id}: discarded`);
+        return 0;
+      }
+      const g = (await c.call("state.get")).goals.find((x) => x.id === id);
+      if (!g) throw new Error(`No goal ${id}`);
+      out(g, () => [`${g.id} (${g.status}): ${g.goal}`, ...g.tasks.map((t) => `  [${t.key}] ${t.title}${t.agentId ? ` → ${t.agentId}` : ""}${t.dependsOn.length ? ` (after ${t.dependsOn.join(", ")})` : ""}`), g.error ? `  error: ${g.error}` : ""].filter(Boolean).join("\n"));
+      return 0;
     }
     case "tasks": {
       const list = await c.call("tasks.list");
