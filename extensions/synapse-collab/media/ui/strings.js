@@ -65,6 +65,10 @@ window.SYNAPSE_STRINGS = {
     "alert.held": "Message from {0} held for you: {1}", "alert.proposed": "{0} proposes {1}: {2}", "alert.proposedByYou": "Proposed decision {0}: {1}", "alert.stale": "Does {0} still hold? Its code changed",
     "alert.review": "{0} is ready for review: {1}", "alert.risky": "{0} risky commands ran without asking in the last day", "alert.claim": "{0} continued {1}'s work", "alert.claimTask": "{0} continued {1}'s work on \"{2}\"",
     "conflict.same-symbol": "Same symbol edited", "conflict.signature-change": "Signature change", "conflict.text-conflict": "Text conflict", "conflict.same-file": "Same file edited", "conflict.warning": "Warning", "conflict.error": "Error",
+    "cf.and": " and ", "cf.sig": "{0} changed the signature of `{1}` in {2} from `{3}` to `{4}`, but {5}'s work calls it ({6}). The merge may be clean as text and still break.",
+    "cf.sigRemoved": "{0} removed `{1}` in {2}, but {3}'s work calls it ({4}).", "cf.same": "{0} are both changing `{1}` in {2}.", "cf.text": "{0} have changes to {1} that will not merge cleanly.",
+    "cf.file": "{0} are editing different parts of {1}.", "cf.decision": "{0} is changing {1}, which decision {2} is pinned to. Check that the change still follows it.",
+    "needs.tell": "Tell {0}", "needs.told": "Told {0}",
     "stop.cancelled": "Turn stopped", "stop.refusal": "The agent declined", "stop.max_tokens": "Stopped: output limit reached", "stop.max_turn_requests": "Stopped: step limit reached",
   },
   ko: {
@@ -130,6 +134,10 @@ window.SYNAPSE_STRINGS = {
     "alert.held": "{0}의 메시지를 보류했습니다: {1}", "alert.proposed": "{0}의 결정 제안 {1}: {2}", "alert.proposedByYou": "제안된 결정 {0}: {1}", "alert.stale": "{0}이(가) 여전히 유효한가요? 코드가 바뀌었습니다",
     "alert.review": "{0} 검토 대기: {1}", "alert.risky": "지난 하루 동안 위험한 명령 {0}개가 묻지 않고 실행되었습니다", "alert.claim": "{0}이(가) {1}의 작업을 이어받았습니다", "alert.claimTask": "{0}이(가) {1}의 \"{2}\" 작업을 이어받았습니다",
     "conflict.same-symbol": "같은 심볼 편집", "conflict.signature-change": "시그니처 변경", "conflict.text-conflict": "텍스트 충돌", "conflict.same-file": "같은 파일 편집", "conflict.warning": "경고", "conflict.error": "오류",
+    "cf.and": ", ", "cf.sig": "{0}이(가) {2}의 `{1}` 시그니처를 `{3}`에서 `{4}`(으)로 바꿨지만, {5}의 작업은 아직 예전 형태로 호출합니다 ({6}). 텍스트로는 깔끔하게 병합돼도 동작이 깨질 수 있습니다.",
+    "cf.sigRemoved": "{0}이(가) {2}의 `{1}`을(를) 지웠지만, {3}의 작업은 아직 호출합니다 ({4}).", "cf.same": "{0}이(가) 모두 {2}의 `{1}`을(를) 바꾸고 있습니다.", "cf.text": "{0}의 {1} 변경이 텍스트로 깔끔하게 병합되지 않습니다.",
+    "cf.file": "{0}이(가) {1}의 서로 다른 부분을 고치고 있습니다.", "cf.decision": "{0}이(가) 결정 {2}이(가) 고정된 {1}을(를) 바꾸고 있습니다. 변경이 그 결정을 따르는지 확인하세요.",
+    "needs.tell": "{0}에게 알리기", "needs.told": "{0}에게 알림",
     "stop.cancelled": "턴을 중지했습니다", "stop.refusal": "에이전트가 거절했습니다", "stop.max_tokens": "중지: 출력 한도 도달", "stop.max_turn_requests": "중지: 단계 한도 도달",
   },
 };

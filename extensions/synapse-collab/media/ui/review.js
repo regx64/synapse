@@ -4,7 +4,7 @@
 (function () {
   // eslint-disable-next-line no-undef
   const vscode = acquireVsCodeApi();
-  const { t, h, icon, dot, diffstat } = /** @type {any} */ (window).SynapseUI;
+  const { t, h, icon, dot, diffstat, conflictText } = /** @type {any} */ (window).SynapseUI;
   const root = /** @type {HTMLElement} */ (document.getElementById("root"));
   const post = (m) => vscode.postMessage(m);
 
@@ -54,7 +54,7 @@
         h(
           "div",
           { class: "card rows" },
-          r.conflicts.map((c) => h("div", { class: "row trow small" }, [h("span", { class: `pill ${c.severity === "error" ? "error" : c.severity === "warning" ? "needs" : ""}` }, [c.kind]), h("span", { class: "grow" }, [c.message])])),
+          r.conflicts.map((c) => h("div", { class: "row trow small" }, [h("span", { class: `pill ${c.severity === "error" ? "error" : c.severity === "warning" ? "needs" : ""}` }, [t(`conflict.${c.kind}`) === `conflict.${c.kind}` ? c.kind : t(`conflict.${c.kind}`)]), h("span", { class: "grow" }, [conflictText(c, (id) => agent(id).name)])])),
         ),
       );
 

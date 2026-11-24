@@ -5,7 +5,7 @@
   // eslint-disable-next-line no-undef
   const vscode = acquireVsCodeApi();
   const UI = /** @type {any} */ (window).SynapseUI;
-  const { t, h, icon, button, dot, statusOf, statusEl, taskOf, planOf, progress, filesOf, fileCount, approvalText, diffstat, ago, guardedRender } = UI;
+  const { t, h, icon, button, dot, statusOf, statusEl, taskOf, planOf, progress, filesOf, fileCount, approvalText, conflictText, diffstat, ago, guardedRender } = UI;
   const root = /** @type {HTMLElement} */ (document.getElementById("root"));
   const saved = vscode.getState() || {};
   let section = saved.section || "overview";
@@ -169,12 +169,26 @@
       h("span", { class: `tile ${tone}`, "aria-hidden": "true" }, [icon(ic)]),
       h("div", { class: "grow col tight" }, [
         h("div", { class: "strong" }, [alertTitle(a, state)]),
-        ap && ap.detail ? h("code", { class: "code-block clamp" }, [approvalText(ap)]) : a.detail ? h("div", { class: "small fg2 clamp" }, [a.detail]) : null,
+        ap && ap.detail ? h("code", { class: "code-block clamp" }, [approvalText(ap)]) : a.detail ? h("div", { class: "small fg2 clamp" }, [alertDetail(a, state)]) : null,
         agent ? h("div", { class: "row tiny muted" }, [dot(agent.color, "sm"), agent.name, a.at ? ` · ${ago(a.at)}` : ""]) : null,
       ]),
       h("div", { class: "row wrap actions" }, alertActions(a, state, ap)),
     ]);
   }
+
+  /** Conflicts read in the person's language; other details are the core's. */
+  function alertDetail(a, state) {
+    if (a.kind !== "conflict") return a.detail;
+    const c = state.conflicts.find((x) => x.id === a.ref);
+    return c ? conflictText(c, (id) => nameOf(state, id)) : a.detail;
+  }
+
+  /** Who can be told about a conflict: your agents in it, not the one whose change the others must follow. */
+  function tellable(c) {
+    const local = c.agents.filter((id) => !id.startsWith("@"));
+    return c.kind === "signature-change" && c.signature ? local.filter((id) => id !== c.signature.owner) : local;
+  }
+  const told = new Set();
 
   function alertActions(a, state, ap) {
     switch (a.kind) {
@@ -183,7 +197,18 @@
       case "conflict": {
         const c = state.conflicts.find((x) => x.id === a.ref);
         const first = c && c.agents.find((id) => !id.startsWith("@"));
-        return [first ? button(t("needs.openLive"), () => post("select", { id: first, show: "diff" }), "primary") : null, c ? button(t("needs.openFile"), () => post("openFile", { path: c.path })) : null];
+        return [
+          first ? button(t("needs.openLive"), () => post("select", { id: first, show: "diff" }), "primary") : null,
+          ...(c ? tellable(c) : []).map((id) => {
+            const key = `${c.id}:${id}`;
+            return button(told.has(key) ? t("needs.told", nameOf(state, id)) : t("needs.tell", nameOf(state, id)), () => {
+              told.add(key);
+              post("tellConflict", { id: c.id, agentId: id });
+              update(true);
+            }, "", { disabled: told.has(key) || undefined });
+          }),
+          c ? button(t("needs.openFile"), () => post("openFile", { path: c.path }), "ghost") : null,
+        ];
       }
       case "agent-error":
         return [button(t("needs.restart"), () => cmd("synapse.restartAgent", a.ref), "primary"), button(t("needs.handOff"), () => cmd("synapse.takeover", a.ref))];

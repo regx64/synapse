@@ -1,4 +1,5 @@
 {
+  " and ": ", ",
   "Add guidance while it works…": "작업 중에 지시 추가…",
   "After this turn": "이번 턴 후",
   "Agent": "에이전트",
@@ -59,6 +60,7 @@
   "Synapse: {0} is ready in {1}.": "Synapse: {0}이(가) {1}에서 준비되었습니다.",
   "Synapse: {0} pinned to {1}. You'll be told when that code changes.": "Synapse: {0}을(를) {1}에 고정했습니다. 그 코드가 바뀌면 알려 드립니다.",
   "Synapse: {0} took over {1} from {2} ({3} files moved).": "Synapse: {0}이(가) {2}에게서 {1}을(를) 이어받았습니다 (파일 {3}개 이동).",
+  "Synapse: {0} will get this after its current turn.": "Synapse: {0}이(가) 현재 턴을 마친 뒤 받습니다.",
   "Task title": "작업 제목",
   "To review": "검토 대기",
   "When should the agent get it?": "에이전트가 언제 받을까요?",
@@ -75,8 +77,14 @@
   "the turn stops and continues with this at once": "턴을 멈추고 바로 이 지시로 이어서 진행합니다",
   "the work": "작업",
   "{0} ({1} ↔ combined: {2})": "{0} ({1} ↔ 합친 결과: {2})",
+  "{0} are both changing `{1}` in {2}.": "{0}이(가) 모두 {2}의 `{1}`을(를) 바꾸고 있습니다.",
+  "{0} are editing different parts of {1}.": "{0}이(가) {1}의 서로 다른 부분을 고치고 있습니다.",
+  "{0} changed the signature of `{1}` in {2} from `{3}` to `{4}`, but {5}'s work calls it ({6}). The merge may be clean as text and still break.": "{0}이(가) {2}의 `{1}` 시그니처를 `{3}`에서 `{4}`(으)로 바꿨지만, {5}의 작업은 아직 예전 형태로 호출합니다 ({6}). 텍스트로는 깔끔하게 병합돼도 동작이 깨질 수 있습니다.",
   "{0} finished": "{0} 완료",
+  "{0} have changes to {1} that will not merge cleanly.": "{0}의 {1} 변경이 텍스트로 깔끔하게 병합되지 않습니다.",
+  "{0} is changing {1}, which decision {2} is pinned to. Check that the change still follows it.": "{0}이(가) 결정 {2}이(가) 고정된 {1}을(를) 바꾸고 있습니다. 변경이 그 결정을 따르는지 확인하세요.",
   "{0} needs you": "{0}: 확인 필요",
+  "{0} removed `{1}` in {2}, but {3}'s work calls it ({4}).": "{0}이(가) {2}의 `{1}`을(를) 지웠지만, {3}의 작업은 아직 호출합니다 ({4}).",
   "{0} stopped with an error": "{0}이(가) 오류로 멈췄습니다",
   "{0}: live changes": "{0}: 실시간 변경"
 }

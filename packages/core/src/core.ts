@@ -21,6 +21,7 @@ import { listPresets } from "./presets.js";
 import { ReviewService } from "./review.js";
 import { StateStore } from "./store.js";
 import { TranscriptStore } from "./transcripts.js";
+import { tellAboutConflict } from "./conflict-help.js";
 import { debounce, KeyedSerializer } from "./util.js";
 import { WorktreeManager } from "./worktrees.js";
 
@@ -307,6 +308,7 @@ export class SynapseCore {
       "ownership.forFile": (p) => this.ownership.markersFor(req(p, "path"), p.content),
       "conflicts.list": () => this.store.getConflicts(),
       "conflicts.check": () => this.checkConflicts(),
+      "conflicts.tell": (p) => tellAboutConflict(this.store, this.agents, req(p, "id"), req(p, "agentId")),
       "approvals.list": (p) => this.store.listApprovals(p?.all),
       "approvals.resolve": (p) => this.agents.resolveApproval(req(p, "id"), p.optionId, p.reject),
       "review.prepare": (p) => this.reviews.prepare(p?.agents, p?.runTests ?? true),

@@ -794,6 +794,8 @@ export interface CoreMethods {
 
   "conflicts.list": { params: void; result: Conflict[] };
   "conflicts.check": { params: void; result: Conflict[] };
+  /** Gives one agent in the conflict guidance about it (after its turn; a prompt when idle). */
+  "conflicts.tell": { params: { id: string; agentId: string }; result: AgentState };
 
   "approvals.list": { params: { all?: boolean }; result: Approval[] };
   "approvals.resolve": { params: { id: string; optionId?: string; reject?: boolean }; result: Approval };

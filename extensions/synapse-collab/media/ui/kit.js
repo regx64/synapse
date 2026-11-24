@@ -173,6 +173,32 @@
     if (typeof d.path === "string") return d.path;
     return JSON.stringify(d, null, 2).slice(0, 1200);
   }
+  /**
+   * A conflict in the person's language, from its structured data (the
+   * core's own message is English). `nameOf` turns agent ids into names.
+   */
+  function conflictText(c, nameOf) {
+    const names = c.agents.map(nameOf);
+    const list = names.join(t("cf.and"));
+    const sites = (c.callSites || []).slice(0, 3).map((x) => `${x.path}:${x.line + 1}`).join(", ") + ((c.callSites || []).length > 3 ? ", …" : "");
+    switch (c.kind) {
+      case "signature-change": {
+        const owner = nameOf((c.signature && c.signature.owner) || c.agents[0]);
+        const other = names.filter((n) => n !== owner).join(t("cf.and"));
+        return c.signature && c.signature.new ? t("cf.sig", owner, c.symbol || "", c.path, c.signature.old || "?", c.signature.new, other, sites) : t("cf.sigRemoved", owner, c.symbol || "", c.path, other, sites);
+      }
+      case "same-symbol":
+        return t("cf.same", list, c.symbol || "", c.path);
+      case "text-conflict":
+        return t("cf.text", list, c.path);
+      case "same-file":
+        return t("cf.file", list, c.path);
+      case "decision":
+        return t("cf.decision", names[0] || "", c.symbol ? `${c.path} › ${c.symbol}` : c.path, c.decisionId || "");
+      default:
+        return c.message;
+    }
+  }
   /** "+12 −3" */
   const diffstat = (add, del) => h("span", { class: "mono tiny" }, [h("span", { class: "add" }, [`+${add}`]), " ", h("span", { class: "del" }, [`−${del}`])]);
 
@@ -232,5 +258,5 @@
     return { el: ta, clear };
   }
 
-  /** @type {any} */ (window).SynapseUI = { t, lang, h, append, icon, iconButton, button, segmented, dot, statusOf, statusLabel, statusEl, taskOf, planOf, progress, filesOf, fileCount, approvalText, diffstat, ago, guardedRender, draftArea };
+  /** @type {any} */ (window).SynapseUI = { t, lang, h, append, icon, iconButton, button, segmented, dot, statusOf, statusLabel, statusEl, taskOf, planOf, progress, filesOf, fileCount, approvalText, conflictText, diffstat, ago, guardedRender, draftArea };
 })();

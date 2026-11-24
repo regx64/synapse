@@ -24,7 +24,8 @@ export type ViewMessage =
   | { type: "decisionRepin"; id: string }
   | { type: "decisionUnpin"; id: string; path: string; symbol?: string }
   | { type: "editPolicy"; agentId: string }
-  | { type: "dismissChecklist" };
+  | { type: "dismissChecklist" }
+  | { type: "tellConflict"; id: string; agentId: string };
 
 /** Commands a webview may run through `{ type: "command" }`. */
 const ALLOWED_COMMANDS = new Set([
@@ -126,6 +127,11 @@ export async function handleViewMessage(m: ViewMessage, conn: CoreConnection, se
       case "editPolicy":
         await vscode.commands.executeCommand("synapse.editPolicy", m.agentId);
         return;
+      case "tellConflict": {
+        const a = await conn.call("conflicts.tell", { id: m.id, agentId: m.agentId });
+        void vscode.window.showInformationMessage(l("Synapse: {0} will get this after its current turn.", a.name));
+        return;
+      }
       case "dismissChecklist":
         await context.workspaceState.update("synapse.checklistDismissed", true);
         return;
