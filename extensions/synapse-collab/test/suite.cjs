@@ -67,7 +67,7 @@ exports.run = async function run() {
 
     // Phase 3: tasks created through the core show up for the extension's commands.
     await client.call("tasks.create", { title: "Smoke task", agentId: "beta" });
-    for (const c of ["synapse.editPolicy", "synapse.newTask", "synapse.initConfig", "synapse.pinDecision", "synapse.steerAgent", "synapse.takeover"]) assert.ok(commands.includes(c), c);
+    for (const c of ["synapse.editPolicy", "synapse.newTask", "synapse.initConfig", "synapse.pinDecision", "synapse.steerAgent", "synapse.takeover", "synapse.liveDiff"]) assert.ok(commands.includes(c), c);
   } finally {
     await client.call("core.shutdown").catch(() => {});
     client.close();

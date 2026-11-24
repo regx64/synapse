@@ -44,6 +44,15 @@ replaces only the UI. See [the plan](docs/plan.md).
 - **Task graph.** Split a goal into tasks, assign them, set dependencies.
   Finishing a task hands off to the next agent with the files and symbols it
   changed; dependent tasks can start automatically.
+- **Team mode.** Several people, each with their own agents, on one
+  repository: your git remote carries everyone's work in progress (no
+  server), and conflicts across people show up before anyone merges. Off by
+  default.
+- **Overview.** The board opens on what needs you (approvals, conflicts,
+  stuck agents, held messages, decisions, reviews), each with its action, and
+  every agent at a glance.
+- **Live diff and comments.** Watch an agent's changes as it works, comment on
+  lines, and send a comment to the agent or turn it into a task.
 - **Steering and takeover.** Give a working agent guidance without starting
   over (after its turn, or interrupting it), or hand its unfinished work,
   task and context to another agent when it is stuck or out of credit.

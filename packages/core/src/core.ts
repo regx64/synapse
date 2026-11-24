@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import type { AgentMethods, AgentPolicy, Conflict, CoreEvent, CoreMethods, CoreMethodName } from "@synapse/protocol";
+import type { AgentMethods, AgentPolicy, AgentState, Conflict, CoreEvent, CoreMethods, CoreMethodName } from "@synapse/protocol";
 import { CORE_API_VERSION, ErrorCodes, RpcError } from "@synapse/protocol";
 import type { AcpMcpServerStdio } from "./acp.js";
 import { AgentManager } from "./agents.js";
@@ -12,6 +12,8 @@ import { DEFAULT_POLICY, mergePolicy } from "./policy.js";
 import { addSecret } from "./redact.js";
 import { loadConfig, type SynapseConfig } from "./config.js";
 import { detectDecisionConflicts } from "./anchors.js";
+import { CommentService } from "./comments.js";
+import { TeamService } from "./team.js";
 import { computeTextConflicts, detectConflicts } from "./conflicts.js";
 import { currentBranch, ensureLocalExclude, repoRootOf, revParse } from "./git.js";
 import { OwnershipService } from "./ownership.js";
@@ -53,6 +55,8 @@ export class SynapseCore {
   readonly ownership: OwnershipService;
   readonly agents: AgentManager;
   readonly reviews: ReviewService;
+  readonly comments: CommentService;
+  readonly team: TeamService;
   readonly collab: CollabService;
   /** Where the API is served; set by serve(). Agents' MCP servers connect back here. */
   socket?: string;
@@ -92,6 +96,8 @@ export class SynapseCore {
       refreshOwnership: (id) => this.ownership.refresh(id),
       log: this.log,
     });
+    this.comments = new CommentService({ store: this.store, agents: this.agents, collab: this.collab, ownership: this.ownership });
+    this.team = new TeamService({ store: this.store, config: () => this.config, log: this.log, onPeersChanged: () => this.scheduleConflictCheck() });
     this.reviews = new ReviewService({
       store: this.store,
       ownership: this.ownership,
@@ -111,6 +117,7 @@ export class SynapseCore {
     await ensureLocalExclude(repoRoot, "/.synapse/");
     const core = new SynapseCore(repoRoot, baseRef, config, opts);
     core.store.load();
+    await core.team.start();
     // Agents restored from disk are stopped; refresh what they own.
     for (const a of core.store.listAgents()) void core.ownership.refresh(a.id).catch(() => {});
     core.scheduleConflictCheck();
@@ -167,7 +174,11 @@ export class SynapseCore {
       r = debounce(() => {
         void this.ownership
           .refresh(agentId)
-          .then(() => this.scheduleConflictCheck())
+          .then(() => {
+            this.scheduleConflictCheck();
+            if (this.team.status().enabled) this.team.syncSoon();
+            return this.comments.relocate(agentId);
+          })
           .catch((err: Error) => this.log(`ownership refresh failed for ${agentId}: ${err.message}`));
       }, this.config.ownershipDebounceMs ?? 750);
       this.refreshers.set(agentId, r);
@@ -180,6 +191,7 @@ export class SynapseCore {
     for (const id of ids) {
       if (!this.store.getAgent(id)) throw new RpcError(ErrorCodes.NotFound, `No agent "${id}"`);
       await this.ownership.refresh(id);
+      await this.comments.relocate(id);
     }
     await this.checkConflicts();
     return this.store.allOwnership().filter((o) => ids.includes(o.agentId));
@@ -187,14 +199,19 @@ export class SynapseCore {
 
   async checkConflicts(): Promise<Conflict[]> {
     await this.conflictSerializer.run("conflicts", async () => {
-      const ownership = this.store.allOwnership();
+      const local = this.store.listAgents();
+      // Teammates' agents (team mode) take part; only conflicts that involve one of ours are kept.
+      const peers = this.team.peers();
+      const peerDetails = new Map(peers.map((p) => [p.agent.id, p.details]));
+      const ownership = [...this.store.allOwnership(), ...peers.map((p) => p.ownership)];
       const textConflicts = await computeTextConflicts(this.repoRoot, ownership);
+      const mine = new Set(local.map((a) => a.id));
       const conflicts = detectConflicts({
-        agents: this.store.listAgents(),
+        agents: [...local, ...peers.map((p) => p.agent as AgentState)],
         ownership,
-        details: (id) => this.ownership.detailsFor(id),
+        details: (id) => peerDetails.get(id) ?? this.ownership.detailsFor(id),
         textConflicts,
-      });
+      }).filter((c) => c.agents.some((a) => mine.has(a)));
       await this.collab.checkDecisionAnchors().catch((e: Error) => this.log(`decision anchor check failed: ${e.message}`));
       conflicts.push(...detectDecisionConflicts(this.store.listDecisions(), this.store.listAgents(), ownership));
       this.store.setConflicts(conflicts);
@@ -219,6 +236,13 @@ export class SynapseCore {
       "agents.stop": (p) => this.agents.stop(req(p, "id")),
       "agents.restart": (p) => this.agents.restart(req(p, "id")),
       "agents.steer": (p) => this.agents.steer(req(p, "id"), req(p, "text"), p.mode ?? "next"),
+      "agents.diff": (p) => this.comments.diff(req(p, "id"), p.path),
+      "comments.list": (p) => this.comments.list(p?.agentId),
+      "comments.add": (p) => this.comments.add(p),
+      "team.status": () => this.team.status(),
+      "team.sync": () => this.team.sync(),
+      "team.leave": () => this.team.leave(),
+      "comments.resolve": (p) => this.comments.resolve(req(p, "id"), p.status),
       "agents.takeover": (p) => this.collab.takeover(req(p, "from"), req(p, "to"), { taskId: p.taskId, note: p.note }),
       "agents.prompt": (p) => {
         const id = req(p, "id");
@@ -329,6 +353,7 @@ export class SynapseCore {
     if (this.closed) return;
     this.closed = true;
     if (this.baseWatch) clearInterval(this.baseWatch);
+    this.team.stop();
     for (const r of this.refreshers.values()) r.cancel();
     this.scheduleConflictCheck.cancel();
     await this.agents.shutdown();

@@ -4,6 +4,7 @@ import * as vscode from "vscode";
 import type { AgentState } from "@synapse/client";
 import { BoardProvider } from "./board.js";
 import { CoreConnection } from "./connection.js";
+import { LiveDiffPanel } from "./livediff.js";
 import { Markers } from "./markers.js";
 import { POLICY_SCHEME, PolicyFileSystem } from "./policy.js";
 import { REVIEW_SCHEME, ReviewContentProvider, ReviewPanel } from "./review.js";
@@ -137,6 +138,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     const a = await pickAgent(id, (x) => x.status === "working" || x.status === "awaiting-approval");
     if (a) await conn.call("agents.cancel", { id: a });
   });
+  register("synapse.liveDiff", async (id) => {
+    const a = await pickAgent(id);
+    if (a) LiveDiffPanel.show(conn, a);
+  });
   register("synapse.steerAgent", async (id) => {
     const a = await pickAgent(id, (x) => x.status === "working" || x.status === "awaiting-approval");
     if (!a) return;
@@ -196,6 +201,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     if (!a) return;
     const items: { label: string; command: string }[] = [
       { label: "$(comment) Send prompt…", command: "synapse.promptAgent" },
+      { label: "$(diff) Live changes and comments", command: "synapse.liveDiff" },
       { label: "$(comment-discussion) Add guidance while it works…", command: "synapse.steerAgent" },
       { label: "$(arrow-swap) Hand work off to another agent…", command: "synapse.takeover" },
       { label: "$(debug-restart) Restart", command: "synapse.restartAgent" },

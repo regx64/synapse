@@ -22,6 +22,13 @@ export interface SynapseConfig {
   policy?: Partial<AgentPolicy>;
   /** Where the decision log is written as Markdown. Default `.synapse/decisions.md`; set e.g. `docs/decisions.md` to commit it. */
   decisionLogPath?: string;
+  /**
+   * Team mode (off by default): publish this person's agents' work in progress
+   * to the git remote under refs/synapse/team/<name>/ and read teammates', so
+   * conflicts across people show up before merge. It pushes unfinished code
+   * to that remote, like pushing a branch.
+   */
+  team?: { enabled?: boolean; remote?: string; name?: string; intervalSec?: number };
   /** Agent preset overrides, keyed by preset id. */
   presets?: Record<string, { command?: string; args?: string[]; name?: string; color?: string }>;
 }

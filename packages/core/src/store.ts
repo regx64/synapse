@@ -9,7 +9,9 @@ import type {
   Approval,
   AuditEntry,
   Conflict,
+  CodeComment,
   Decision,
+  TeamState,
   Task,
   CoreEvent,
   CoreEventType,
@@ -17,6 +19,7 @@ import type {
   Review,
 } from "@synapse/protocol";
 import { CORE_API_VERSION } from "@synapse/protocol";
+import { computeAlerts } from "./alerts.js";
 import { debounce, nowIso } from "./util.js";
 
 const BACKLOG_LIMIT = 2000;
@@ -29,11 +32,13 @@ interface PersistedState {
   tasks?: Task[];
   messages?: AgentMessage[];
   decisions?: Decision[];
+  comments?: CodeComment[];
   audit?: AuditEntry[];
 }
 
 const MESSAGE_LIMIT = 500;
 const AUDIT_LIMIT = 1000;
+const COMMENT_LIMIT = 1000;
 
 /**
  * The single source of truth for collaboration state (risk T4). All
@@ -51,6 +56,8 @@ export class StateStore extends EventEmitter {
   private readonly tasks = new Map<string, Task>();
   private readonly messages = new Map<string, AgentMessage>();
   private readonly decisions = new Map<string, Decision>();
+  private readonly comments = new Map<string, CodeComment>();
+  private team: TeamState = { enabled: false, person: "", remote: "origin", peers: [] };
   private audit: AuditEntry[] = [];
   private readonly backlog: CoreEvent[] = [];
   private readonly persistSoon = debounce(() => this.persistNow(), 200);
@@ -87,7 +94,8 @@ export class StateStore extends EventEmitter {
   }
 
   snapshot(): CoreState {
-    return {
+    const state: Omit<CoreState, "alerts"> = {
+      team: this.team,
       version: CORE_API_VERSION,
       repoRoot: this.repoRoot,
       baseRef: this.baseRef,
@@ -99,9 +107,11 @@ export class StateStore extends EventEmitter {
       tasks: this.listTasks(),
       messages: this.listMessages(),
       decisions: this.listDecisions(),
+      comments: this.listComments(),
       audit: this.audit.slice(-200),
       seq: this.seq,
     };
+    return { ...state, alerts: computeAlerts({ ...state, audit: this.audit }) };
   }
 
   // -------------------------------------------------------------------------
@@ -282,6 +292,36 @@ export class StateStore extends EventEmitter {
     return d;
   }
 
+  getTeam(): TeamState {
+    return this.team;
+  }
+
+  setTeam(t: TeamState): void {
+    const changed = JSON.stringify(t) !== JSON.stringify(this.team);
+    this.team = t;
+    if (changed) this.emitEvent("team.updated", t);
+  }
+
+  listComments(agentId?: string): CodeComment[] {
+    const all = [...this.comments.values()];
+    return agentId ? all.filter((c) => c.agentId === agentId) : all;
+  }
+
+  getComment(id: string): CodeComment | undefined {
+    return this.comments.get(id);
+  }
+
+  putComment(c: CodeComment): CodeComment {
+    c.updatedAt = nowIso();
+    this.comments.set(c.id, c);
+    if (this.comments.size > COMMENT_LIMIT) {
+      for (const old of [...this.comments.values()].filter((x) => x.status === "resolved").slice(0, this.comments.size - COMMENT_LIMIT)) this.comments.delete(old.id);
+    }
+    this.emitEvent("comment.updated", c);
+    this.persistSoon();
+    return c;
+  }
+
   addAudit(e: AuditEntry): void {
     this.audit.push(e);
     if (this.audit.length > AUDIT_LIMIT) this.audit.splice(0, this.audit.length - AUDIT_LIMIT);
@@ -308,6 +348,7 @@ export class StateStore extends EventEmitter {
     for (const t of data.tasks ?? []) this.tasks.set(t.id, t.status === "in_progress" ? { ...t, status: "todo" } : t);
     for (const m of data.messages ?? []) this.messages.set(m.id, m);
     for (const d of data.decisions ?? []) this.decisions.set(d.id, d);
+    for (const c of data.comments ?? []) this.comments.set(c.id, c);
     this.audit = data.audit ?? [];
   }
 
@@ -321,6 +362,7 @@ export class StateStore extends EventEmitter {
       tasks: this.listTasks(),
       messages: this.listMessages(),
       decisions: this.listDecisions(),
+      comments: this.listComments(),
       audit: this.audit.slice(-500),
     };
     fs.mkdirSync(path.dirname(this.stateFile), { recursive: true });

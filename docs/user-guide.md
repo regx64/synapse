@@ -3,6 +3,26 @@
 Everything here works from the board in the Synapse IDE and from the
 `synapse` CLI; both call the same core.
 
+## Overview
+
+The board opens on **Overview**: first **Needs you**, only the things that
+wait for you or can cause damage, most urgent first, each with its action
+right there:
+
+| Alert | Action |
+| --- | --- |
+| an agent asks permission | the agent's own options (allow, reject…) |
+| a conflict between agents (errors first) | open the file |
+| an agent stopped with an error | restart, or hand its work to another agent |
+| a message held for you | release or reject |
+| a proposed decision | accept or reject |
+| a pinned decision whose code changed | still holds |
+| a task ready for review | review & merge, or mark done |
+| risky commands an agent ran without asking (last day) | open the audit |
+
+Below it, every agent at a glance: status, task, plan progress, files,
+comments and waiting guidance. `synapse alerts` prints the same list.
+
 ## Agents and worktrees
 
 An agent is any program that speaks the [Agent Client Protocol](https://agentclientprotocol.com)
@@ -52,6 +72,33 @@ synapse tasks
 
 ```bash
 synapse task done t-1
+```
+
+## Live changes and comments
+
+**Live diff** on an agent's card (or the agent menu) opens its changes
+against its base as they happen, refreshed with every snapshot. Click a line
+number to comment on it:
+
+- **Tell the agent**: the comment, with the code it is about, goes to the
+  agent as guidance after its current turn (at once if it is idle);
+- **Make a task**: a task for that agent, with the comment and the code;
+- **Keep as note**: stays on the diff for you.
+
+Comments follow their code as the agent keeps editing; when the code they
+quote is gone, they are marked *code changed*. Resolve a comment when it is
+done.
+
+```bash
+synapse diff claude src/pricing.ts
+```
+
+```bash
+synapse comment add claude src/pricing.ts:12-14 "Clamp to zero" --tell
+```
+
+```bash
+synapse comments --agent claude
 ```
 
 ## Steering and handing off
@@ -199,6 +246,36 @@ into `.synapse/review/<id>`, runs `setupCommand` and `testCommand` there, and
 shows files, owners, conflicts and test output. Merging fast-forwards your
 branch; it requires a clean checkout, an unmoved base, passing tests and no
 open conflicts (or `--force`).
+
+## Team mode
+
+Several people, each with their own Synapse and agents, on one repository.
+There is no Synapse server: your existing git remote carries it. Turn it on in
+`synapse.config.json` (or `.synapse/config.json` for just you):
+
+```json
+{ "team": { "enabled": true, "name": "alice", "remote": "origin", "intervalSec": 60 } }
+```
+
+Every minute, and shortly after your agents change something, Synapse pushes
+your agents' work in progress (their snapshot commits) and a small summary to
+`refs/synapse/team/<name>/` on the remote, and fetches your teammates'. Their
+agents then take part in conflict detection: if Bob's agent calls a function
+your agent is changing, you both see the signature-change warning before
+anyone merges. The **Team** section of the Overview shows teammates' agents,
+read-only.
+
+```bash
+synapse team sync
+```
+
+```bash
+synapse team leave
+```
+
+`leave` removes everything you published. Team mode pushes unfinished code to
+the remote, like pushing a branch, so it is off by default; anyone who can
+read the remote can read it. `name` defaults to your git `user.name`.
 
 ## Privacy
 

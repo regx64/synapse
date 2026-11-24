@@ -442,6 +442,131 @@ export interface DecisionAnchor extends DecisionPin {
 }
 
 // ---------------------------------------------------------------------------
+// Live diffs and comments on an agent's changes
+
+export interface DiffLine {
+  t: "+" | "-" | " ";
+  text: string;
+  /** 1-based line numbers in the base and agent versions. */
+  oldNo?: number;
+  newNo?: number;
+}
+
+export interface DiffHunk {
+  header: string;
+  oldStart: number;
+  oldLines: number;
+  newStart: number;
+  newLines: number;
+  lines: DiffLine[];
+}
+
+export interface FileDiff {
+  path: string;
+  status: "added" | "modified" | "deleted";
+  binary: boolean;
+  hunks: DiffHunk[];
+  /** The diff was cut short (very large file or change). */
+  truncated?: boolean;
+}
+
+/** What an agent has changed against its base, as of its latest snapshot. */
+export interface AgentDiff {
+  agentId: string;
+  baseCommit: string;
+  snapshot?: string;
+  files: FileDiff[];
+  updatedAt: string;
+}
+
+/** A comment by the person on lines of an agent's changes. */
+export interface CodeComment {
+  id: string;
+  agentId: string;
+  path: string;
+  /** 1-based lines in the agent's version of the file, where the quoted code was last found. */
+  line: number;
+  endLine: number;
+  /** The commented code, used to follow it as the agent keeps editing. */
+  quote: string;
+  text: string;
+  /** "note": kept for the person; "guidance": given to the agent; "task": turned into a task. */
+  action: "note" | "guidance" | "task";
+  taskId?: string;
+  status: "open" | "resolved";
+  /** The quoted code is no longer in the agent's version of the file. */
+  outdated?: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ---------------------------------------------------------------------------
+// Team mode: teammates' agents, shared through the git remote (no server)
+
+/** A teammate's agent, as their Synapse published it. Read-only here. */
+export interface TeamAgent {
+  /** "@<person>/<agent id>": how it appears in conflicts. */
+  id: string;
+  person: string;
+  agentId: string;
+  name: string;
+  color: string;
+  status: AgentStatus;
+  /** Title of the task it works on, if any. */
+  task?: string;
+  baseRef: string;
+  baseCommit: string;
+  snapshot?: string;
+  files: FileChange[];
+}
+
+export interface TeamPeer {
+  person: string;
+  updatedAt: string;
+  /** Not updated for a while (their Synapse is closed or offline). */
+  stale: boolean;
+  agents: TeamAgent[];
+}
+
+export interface TeamState {
+  enabled: boolean;
+  /** How this person appears to teammates. */
+  person: string;
+  remote: string;
+  lastSync?: string;
+  error?: string;
+  peers: TeamPeer[];
+}
+
+// ---------------------------------------------------------------------------
+// Alerts: only what needs the person
+
+export type AlertKind =
+  | "approval"
+  | "conflict"
+  | "agent-error"
+  | "held-message"
+  | "proposed-decision"
+  | "stale-decision"
+  | "task-review"
+  | "risky-command";
+
+/** Something the person should act on. Derived from state; it goes away when acted on. */
+export interface Alert {
+  /** Stable while the underlying item exists. */
+  id: string;
+  kind: AlertKind;
+  /** "urgent": blocks work or may cause damage; "action": waits for the person. */
+  level: "urgent" | "action";
+  title: string;
+  detail?: string;
+  agentId?: string;
+  /** The item to act on: an approval, conflict, message, decision or task id; the agent id for agent errors. */
+  ref: string;
+  at: string;
+}
+
+// ---------------------------------------------------------------------------
 // State and events
 
 export interface CoreState {
@@ -456,6 +581,10 @@ export interface CoreState {
   tasks: Task[];
   messages: AgentMessage[];
   decisions: Decision[];
+  comments: CodeComment[];
+  /** What needs the person now, most urgent first. */
+  alerts: Alert[];
+  team: TeamState;
   /** The most recent audit entries. */
   audit: AuditEntry[];
   seq: number;
@@ -475,6 +604,8 @@ export type CoreEventType =
   | "task.removed"
   | "message.updated"
   | "decision.updated"
+  | "comment.updated"
+  | "team.updated"
   | "audit.added"
   | "core.log";
 
@@ -561,6 +692,24 @@ export interface CoreMethods {
    * worktree, the task is reassigned, and `to` continues it with a summary of
    * what was done. `to` must be running, idle and without changes of its own.
    */
+  /** The agent's changes against its base as hunks (refreshes its snapshot first). */
+  "agents.diff": { params: { id: string; path?: string }; result: AgentDiff };
+  "comments.list": { params: { agentId?: string } | void; result: CodeComment[] };
+  /**
+   * Comments on lines of an agent's changes. `action` "guidance" also gives it
+   * to the agent (as with agents.steer, after its turn); "task" turns it into a
+   * task for that agent; "note" (default) keeps it for the person.
+   */
+  "comments.add": {
+    params: { agentId: string; path: string; line: number; endLine?: number; text: string; action?: CodeComment["action"] };
+    result: CodeComment;
+  };
+  "team.status": { params: void; result: TeamState };
+  /** Publishes this person's agents to the remote and fetches teammates'. Needs team mode enabled. */
+  "team.sync": { params: void; result: TeamState };
+  /** Removes everything this person published from the remote. */
+  "team.leave": { params: void; result: TeamState };
+  "comments.resolve": { params: { id: string; status?: CodeComment["status"] }; result: CodeComment };
   "agents.takeover": { params: { from: string; to: string; taskId?: string; note?: string }; result: TakeoverResult };
   /** Throws the agent's worktree back to a ref (default: the current base). */
   "agents.reset": { params: { id: string; ref?: string }; result: AgentState };

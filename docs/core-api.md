@@ -25,6 +25,7 @@ failing tests), `-32004` not found.
 | --- | --- | --- |
 | `session.hello` | `{ token, client? }` | `{ version, repoRoot, baseRef, pid }` |
 | `state.get` | – | `CoreState`: agents, ownership, conflicts, approvals, reviews, seq |
+| (in `CoreState`) `alerts` | – | `Alert[]`: only what needs the person (approvals, conflicts, agent errors, held messages, proposed and stale decisions, tasks in review, risky commands run unasked), most urgent first; derived, never stored |
 | `events.subscribe` | `{ sinceSeq? }` | `{ seq, backlog }`; then `event` notifications |
 | `events.unsubscribe` | – | `null` |
 | `agents.presets` | – | `PresetInfo[]` |
@@ -35,6 +36,13 @@ failing tests), `-32004` not found.
 | `agents.prompt` | `{ id, text }` | `{ accepted: true }`; progress arrives as events |
 | `agents.cancel` | `{ id }` | `null` |
 | `agents.steer` | `{ id, text, mode?: "next" \| "now" }` | `AgentState`. Guidance for a working agent: after the turn, or interrupting it; the same work (and task) continues in a follow-up turn. An idle agent gets it as a prompt |
+| `agents.diff` | `{ id, path? }` | `AgentDiff`: files and hunks against the agent's base, from a fresh snapshot |
+| `comments.list` | `{ agentId? }` | `CodeComment[]` |
+| `comments.add` | `{ agentId, path, line, endLine?, text, action?: "note" \| "guidance" \| "task" }` | `CodeComment`. "guidance" also gives it to the agent; "task" creates a task for it |
+| `team.status` | – | `TeamState`: whether team mode is on, who you are, teammates and their agents |
+| `team.sync` | – | `TeamState`. Publishes your agents to the git remote and fetches teammates'; their agents then take part in conflict detection |
+| `team.leave` | – | `TeamState`. Removes everything you published |
+| `comments.resolve` | `{ id, status? }` | `CodeComment` |
 | `agents.takeover` | `{ from, to, taskId?, note? }` | `TakeoverResult`. `to` continues `from`'s unfinished work: `from` is stopped, its changes move into `to`'s worktree, the task is reassigned, `to` is briefed |
 | `agents.reset` | `{ id, ref? }` | `AgentState` (worktree reset to the base, changes discarded) |
 | `ownership.get` | `{ agentId? }` | `AgentOwnership[]` |
