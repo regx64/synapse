@@ -31,11 +31,11 @@ jobs:
       # Outside the workspace: see build/lib.mjs. The upstream build writes the app next to it.
       SYNAPSE_VSCODE_DIR: ${{ github.workspace }}/../synapse-vscode
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - id: pin
         shell: bash
         run: echo "node=$(node -p 'require("./build/upstream.json").node')" >> "$GITHUB_OUTPUT"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: ${{ steps.pin.outputs.node }}
       - if: matrix.platform == 'linux'
@@ -121,7 +121,7 @@ jobs:
       - name: Record the build commit (the auto-updater compares it)
         shell: bash
         run: git -C "$SYNAPSE_VSCODE_DIR" rev-parse HEAD > release/commit-${{ matrix.platform }}-${{ matrix.arch }}.txt
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: release-${{ matrix.platform }}-${{ matrix.arch }}
           path: release/
@@ -131,8 +131,8 @@ jobs:
     runs-on: ubuntu-latest
     if: github.ref_type == 'tag'
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v7
         with:
           path: release
           merge-multiple: true

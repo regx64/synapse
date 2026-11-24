@@ -19,8 +19,8 @@ jobs:
     # Windows support for the core (named pipes, worktree paths) is not yet verified.
     continue-on-error: ${{ matrix.os == 'windows-latest' }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -35,7 +35,7 @@ jobs:
         run: xvfb-run -a npm run test:smoke -w extensions/synapse-collab
         env:
           VSCODE_TEST_VERSION: "1.147.0"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         if: matrix.os == 'ubuntu-latest'
         with:
           name: synapse-collab-extension
@@ -48,8 +48,8 @@ jobs:
     name: Patches apply to pinned upstream
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
