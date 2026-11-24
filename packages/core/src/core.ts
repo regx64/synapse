@@ -261,6 +261,11 @@ export class SynapseCore {
       "agents.restart": (p) => this.agents.restart(req(p, "id")),
       "agents.steer": (p) => this.agents.steer(req(p, "id"), req(p, "text"), p.mode ?? "next"),
       "agents.diff": (p) => this.comments.diff(req(p, "id"), p.path),
+      "agents.rewind": async (p) => {
+        const entry = this.transcripts.list(req(p, "id")).find((e) => e.n === p.n);
+        if (!entry?.checkpoint) throw new RpcError(ErrorCodes.NotFound, "No checkpoint before that turn (it may be older than the 30 kept)");
+        return this.agents.rewind(p.id, entry.checkpoint, `before turn ${p.n}`);
+      },
       "agents.transcript": (p) => {
         if (!this.store.getAgent(req(p, "id"))) throw new RpcError(ErrorCodes.NotFound, `No agent "${p.id}"`);
         return this.transcripts.list(p.id, p.from, p.limit);

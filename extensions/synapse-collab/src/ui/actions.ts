@@ -25,7 +25,8 @@ export type ViewMessage =
   | { type: "decisionUnpin"; id: string; path: string; symbol?: string }
   | { type: "editPolicy"; agentId: string }
   | { type: "dismissChecklist" }
-  | { type: "tellConflict"; id: string; agentId: string };
+  | { type: "tellConflict"; id: string; agentId: string }
+  | { type: "rewind"; id: string; n: number };
 
 /** Commands a webview may run through `{ type: "command" }`. */
 const ALLOWED_COMMANDS = new Set([
@@ -130,6 +131,13 @@ export async function handleViewMessage(m: ViewMessage, conn: CoreConnection, se
       case "tellConflict": {
         const a = await conn.call("conflicts.tell", { id: m.id, agentId: m.agentId });
         void vscode.window.showInformationMessage(l("Synapse: {0} will get this after its current turn.", a.name));
+        return;
+      }
+      case "rewind": {
+        const name = conn.state?.agents.find((a) => a.id === m.id)?.name ?? m.id;
+        const go = l("Rewind");
+        const ok = await vscode.window.showWarningMessage(l("Put {0}'s worktree back to how it was before this turn? Changes made since are discarded (the conversation stays).", name), { modal: true }, go);
+        if (ok === go) await conn.call("agents.rewind", { id: m.id, n: m.n });
         return;
       }
       case "dismissChecklist":

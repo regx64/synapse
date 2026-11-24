@@ -7,13 +7,16 @@ import { AcpAgentProcess, type AcpMcpServerStdio, type AcpPermissionOutcome, typ
 import type { StateStore } from "./store.js";
 import type { WorktreeManager } from "./worktrees.js";
 import { AGENT_COLORS, AGENT_ID_RE, debounce, isInside, nowIso, randomId, realpathLoose, toPosix, truncateTail } from "./util.js";
-import { revParse } from "./git.js";
+import { git, revParse, snapshotWorktree } from "./git.js";
 import { commandFromRawInput, evaluatePermission, isRisky, matchesAny, mergePolicy, pathFromRawInput, urlFromRawInput, validatePolicy } from "./policy.js";
 import { addSecret, redact } from "./redact.js";
 
 const MAX_TOOL_CALLS = 30;
 const MAX_GUIDANCE = 4000;
 const MAX_MESSAGE_TAIL = 4000;
+
+/** Checkpoints kept per agent (one per turn). */
+export const CHECKPOINTS_KEPT = 30;
 
 export interface AgentManagerDeps {
   store: StateStore;
@@ -109,6 +112,9 @@ export class AgentManager {
     this.require(id);
     await this.stop(id);
     if (!keepWorktree) await this.deps.worktrees.remove(id, { deleteBranch: true });
+    // Its checkpoints go too.
+    const refs = (await git(this.store.repoRoot, ["for-each-ref", "--format=%(refname)", `refs/synapse/checkpoints/${id}/`]).catch(() => "")).split("\n").filter(Boolean);
+    for (const ref of refs) await git(this.store.repoRoot, ["update-ref", "-d", ref]).catch(() => {});
     this.store.removeAgent(id);
   }
 
@@ -209,10 +215,41 @@ export class AgentManager {
   }
 
   private runTurn(id: string, proc: AcpAgentProcess, text: string): void {
-    proc.prompt(text).then(
-      (stopReason) => this.endTurn(id, proc, stopReason),
-      (err: Error) => this.endTurn(id, proc, "error", err.message),
-    );
+    // A checkpoint first, so the person can rewind the agent to before this turn.
+    this.checkpoint(id)
+      .catch((err: Error) => this.deps.log(`checkpoint for ${id} failed: ${err.message}`))
+      .then(() => proc.prompt(text))
+      .then(
+        (stopReason) => this.endTurn(id, proc, stopReason),
+        (err: Error) => this.endTurn(id, proc, "error", err.message),
+      );
+  }
+
+  /**
+   * Snapshots the agent's worktree (untracked files included) and keeps it
+   * under refs/synapse/checkpoints/<agent>/ (the newest CHECKPOINTS_KEPT).
+   */
+  private async checkpoint(id: string): Promise<void> {
+    const a = this.store.getAgent(id);
+    if (!a) return;
+    const sha = await snapshotWorktree(a.worktree.path, `synapse checkpoint before a turn of ${id}`);
+    const repo = this.store.repoRoot;
+    const prefix = `refs/synapse/checkpoints/${id}/`;
+    await git(repo, ["update-ref", `${prefix}${Date.now().toString().padStart(15, "0")}`, sha]);
+    const refs = (await git(repo, ["for-each-ref", "--format=%(refname)", prefix])).split("\n").filter(Boolean).sort();
+    for (const old of refs.slice(0, Math.max(0, refs.length - CHECKPOINTS_KEPT))) await git(repo, ["update-ref", "-d", old]);
+    this.store.emitEvent("agent.output", { agentId: id, kind: "turn", phase: "checkpoint", checkpoint: sha, text: `checkpoint ${sha.slice(0, 10)}` });
+  }
+
+  /** Puts the agent's worktree back to a checkpoint. Only between turns. */
+  async rewind(id: string, checkpoint: string, label: string): Promise<AgentState> {
+    const a = this.require(id);
+    if (a.status === "working" || a.status === "awaiting-approval") throw new RpcError(ErrorCodes.Conflict, `${a.name} is in a turn; stop it first`);
+    if (!/^[0-9a-f]{40}$/.test(checkpoint)) throw new RpcError(ErrorCodes.InvalidParams, "Not a checkpoint");
+    await this.deps.worktrees.resetTo(id, checkpoint);
+    this.store.emitEvent("agent.output", { agentId: id, kind: "turn", phase: "rewind", text: label });
+    this.deps.onFilesChanged(id);
+    return this.store.getAgent(id)!;
   }
 
   /**

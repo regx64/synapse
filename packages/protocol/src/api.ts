@@ -645,7 +645,9 @@ export interface AgentOutputEvent {
   kind: "message" | "thought" | "tool" | "plan" | "stderr" | "turn";
   text: string;
   /** For "turn": what happened. "followup" is the turn that carries guidance. */
-  phase?: "prompt" | "guidance" | "followup" | "end";
+  phase?: "prompt" | "guidance" | "followup" | "end" | "checkpoint" | "rewind";
+  /** For "turn" with phase "checkpoint": the snapshot taken before the turn. */
+  checkpoint?: string;
   /** For "turn" with phase "guidance". */
   mode?: "now" | "next";
   guidance?: string;
@@ -664,12 +666,14 @@ export interface TranscriptEntry {
   /** Increasing per agent. */
   n: number;
   at: string;
-  kind: "prompt" | "guidance" | "message" | "thought" | "tool" | "end";
+  kind: "prompt" | "guidance" | "message" | "thought" | "tool" | "end" | "rewind";
   text: string;
   /** prompt: the task the agent was working on. */
   taskId?: string;
   /** prompt: a follow-up turn carrying guidance. */
   followup?: boolean;
+  /** prompt: the worktree as it was before this turn (agents.rewind goes back to it). */
+  checkpoint?: string;
   /** guidance: when the agent gets it. */
   mode?: "now" | "next";
   /** tool */
@@ -756,6 +760,8 @@ export interface CoreMethods {
   "agents.diff": { params: { id: string; path?: string }; result: AgentDiff };
   /** The agent's conversation, oldest first. `from` returns entries from that `n` on (pass the newest `n` you have: it may still be growing). */
   "agents.transcript": { params: { id: string; from?: number; limit?: number }; result: TranscriptEntry[] };
+  /** Puts the agent's worktree back to how it was before the turn that starts at transcript entry `n`. */
+  "agents.rewind": { params: { id: string; n: number }; result: AgentState };
   "comments.list": { params: { agentId?: string } | void; result: CodeComment[] };
   /**
    * Comments on lines of an agent's changes. `action` "guidance" also gives it

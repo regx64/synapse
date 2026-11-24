@@ -124,3 +124,6 @@
 .review-page .file:hover { background: var(--sy-hover); }
 .review-page .output { max-height: 280px; overflow: auto; }
 .review-page .blocked { gap: 12px; }
+.rewind-row { display: flex; justify-content: flex-end; margin-top: -8px; }
+.rewind-row .link { display: inline-flex; align-items: center; gap: 4px; color: var(--sy-muted); text-decoration: none; }
+.rewind-row .link:hover { color: var(--sy-fg); text-decoration: underline; }

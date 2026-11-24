@@ -79,6 +79,13 @@ export class TranscriptStore {
           const taskId = this.store.getAgent(o.agentId)?.currentTaskId;
           add({ kind: "prompt", text: o.text.replace(/^> /, ""), taskId, followup: o.phase === "followup" || undefined });
         } else if (o.phase === "guidance") add({ kind: "guidance", text: o.guidance ?? o.text, mode: o.mode });
+        else if (o.phase === "checkpoint" && o.checkpoint) {
+          const prompt = [...list].reverse().find((e) => e.kind === "prompt");
+          if (prompt && !prompt.checkpoint) {
+            prompt.checkpoint = o.checkpoint;
+            this.touch(o.agentId);
+          }
+        } else if (o.phase === "rewind") add({ kind: "rewind", text: o.text });
         else if (o.phase === "end") add({ kind: "end", text: o.stopReason ?? "", stopReason: o.stopReason, error: o.error ? redact(o.error) : undefined });
         return;
       }

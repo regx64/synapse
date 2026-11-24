@@ -105,6 +105,10 @@
       const streaming = e === last && e.kind === "message" && a.status === "working";
       const el = entry(e, a, state, streaming);
       if (el) list.append(el);
+      // Every turn can be undone: put the worktree back to how it was before it.
+      if (el && e.kind === "prompt" && e.checkpoint && !e.followup && !busy(a)) {
+        list.append(h("div", { class: "rewind-row" }, [h("button", { class: "link tiny", onclick: () => post({ type: "rewind", id: a.id, n: e.n }) }, [icon("refresh", 11), t("detail.rewind")])]));
+      }
     }
     if (a.status === "working" && (!last || last.kind !== "message")) {
       list.append(h("div", { class: "agent-msg muted" }, [dot(a.color, "sm pulse"), h("span", {}, [t("detail.working")])]));
@@ -157,6 +161,8 @@
           ],
         );
       }
+      case "rewind":
+        return h("div", { class: "divider tiny st-needs" }, [t("detail.rewound")]);
       case "end":
         if (e.error) return h("div", { class: "divider small error-text" }, [t("detail.endedError", e.error)]);
         if (e.stopReason && e.stopReason !== "end_turn") return h("div", { class: "divider tiny muted" }, [t(`stop.${e.stopReason}`) === `stop.${e.stopReason}` ? t("detail.ended", e.stopReason) : t(`stop.${e.stopReason}`)]);
@@ -166,6 +172,7 @@
     }
   }
 
+  const busy = (a) => a.status === "working" || a.status === "awaiting-approval";
   const relPath = (p, a) => (p.startsWith(a.worktree.path) ? p.slice(a.worktree.path.length).replace(/^[\\/]/, "") : p);
 
   function bubble(text, meta, at) {

@@ -69,6 +69,7 @@ window.SYNAPSE_STRINGS = {
     "cf.sigRemoved": "{0} removed `{1}` in {2}, but {3}'s work calls it ({4}).", "cf.same": "{0} are both changing `{1}` in {2}.", "cf.text": "{0} have changes to {1} that will not merge cleanly.",
     "cf.file": "{0} are editing different parts of {1}.", "cf.decision": "{0} is changing {1}, which decision {2} is pinned to. Check that the change still follows it.",
     "needs.tell": "Tell {0}", "needs.told": "Told {0}",
+    "detail.rewind": "Rewind to before this", "detail.rewound": "Rewound the worktree to before a turn",
     "stop.cancelled": "Turn stopped", "stop.refusal": "The agent declined", "stop.max_tokens": "Stopped: output limit reached", "stop.max_turn_requests": "Stopped: step limit reached",
   },
   ko: {
@@ -138,6 +139,7 @@ window.SYNAPSE_STRINGS = {
     "cf.sigRemoved": "{0}이(가) {2}의 `{1}`을(를) 지웠지만, {3}의 작업은 아직 호출합니다 ({4}).", "cf.same": "{0}이(가) 모두 {2}의 `{1}`을(를) 바꾸고 있습니다.", "cf.text": "{0}의 {1} 변경이 텍스트로 깔끔하게 병합되지 않습니다.",
     "cf.file": "{0}이(가) {1}의 서로 다른 부분을 고치고 있습니다.", "cf.decision": "{0}이(가) 결정 {2}이(가) 고정된 {1}을(를) 바꾸고 있습니다. 변경이 그 결정을 따르는지 확인하세요.",
     "needs.tell": "{0}에게 알리기", "needs.told": "{0}에게 알림",
+    "detail.rewind": "이 턴 전으로 되돌리기", "detail.rewound": "작업 공간을 이전 턴 전으로 되돌렸습니다",
     "stop.cancelled": "턴을 중지했습니다", "stop.refusal": "에이전트가 거절했습니다", "stop.max_tokens": "중지: 출력 한도 도달", "stop.max_turn_requests": "중지: 단계 한도 도달",
   },
 };
