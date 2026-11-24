@@ -82,6 +82,19 @@ export function computeAlerts(s: Omit<CoreState, "alerts">, now = Date.now()): A
       at: last.at,
     });
   }
+  for (const c of s.team?.claimsOnMe ?? []) {
+    const own = c.agent.slice(c.agent.indexOf("/") + 1);
+    out.push({
+      id: `team-claim:${c.id}`,
+      kind: "team-claim",
+      level: "action",
+      title: `${c.by} continued ${name(own)}'s work${c.task ? ` on "${c.task}"` : ""}`,
+      detail: `in ${c.by}'s ${c.byAgent}. Reset ${name(own)} so you two don't work on the same changes, or dismiss.`,
+      agentId: own,
+      ref: c.id,
+      at: c.at,
+    });
+  }
   const rank = (a: Alert) => (a.level === "urgent" ? 0 : 1);
   return out.sort((a, b) => rank(a) - rank(b) || b.at.localeCompare(a.at));
 }

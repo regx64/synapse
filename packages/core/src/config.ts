@@ -28,7 +28,7 @@ export interface SynapseConfig {
    * conflicts across people show up before merge. It pushes unfinished code
    * to that remote, like pushing a branch.
    */
-  team?: { enabled?: boolean; remote?: string; name?: string; intervalSec?: number };
+  team?: { enabled?: boolean; remote?: string; name?: string; intervalSec?: number; members?: Record<string, "editor" | "viewer"> };
   /** Agent preset overrides, keyed by preset id. */
   presets?: Record<string, { command?: string; args?: string[]; name?: string; color?: string }>;
 }

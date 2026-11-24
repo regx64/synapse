@@ -84,6 +84,11 @@
         "category": "Synapse"
       },
       {
+        "command": "synapse.teamAdopt",
+        "title": "Continue a Teammate's Agent's Work\u2026",
+        "category": "Synapse"
+      },
+      {
         "command": "synapse.liveDiff",
         "title": "Show an Agent's Live Changes",
         "category": "Synapse"
@@ -179,6 +184,10 @@
       "commandPalette": [
         {
           "command": "synapse.agentMenu",
+          "when": "false"
+        },
+        {
+          "command": "synapse.teamAdopt",
           "when": "false"
         },
         {

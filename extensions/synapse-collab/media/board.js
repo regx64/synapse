@@ -161,6 +161,8 @@
         return [button("Review & merge", () => cmd("synapse.prepareReview"), "primary"), button("Mark done", () => post("taskAction", { id: a.ref, action: "done" }))];
       case "risky-command":
         return [go("audit")];
+      case "team-claim":
+        return [button("Reset my agent", () => cmd("synapse.resetAgent", a.agentId)), button("Dismiss", () => post("teamDismiss", { id: a.ref }))];
       default:
         return [];
     }
@@ -220,7 +222,7 @@
     root.append(
       h("h2", {}, [`Team (${t.peers.length})`]),
       h("div", { class: "row" }, [
-        h("span", { class: "muted small" }, [`You are "${t.person}" on ${t.remote}${ago === undefined ? ", not synced yet" : `, synced ${ago ? `${ago} min ago` : "just now"}`}`]),
+        h("span", { class: "muted small" }, [`You are "${t.person}"${t.role === "viewer" ? " (viewer)" : ""} on ${t.remote}${ago === undefined ? ", not synced yet" : `, synced ${ago ? `${ago} min ago` : "just now"}`}`]),
         h("span", { class: "spacer" }),
         button("Sync now", () => post("teamSync", {}), "link"),
       ]),
@@ -235,6 +237,8 @@
             h("div", { class: "row" }, [h("strong", {}, [a.name.replace(/ \([^)]*\)$/, "")]), h("span", { class: `status st-${a.status}` }, [a.status])]),
             h("div", { class: "small clip" }, [a.task || h("span", { class: "muted" }, ["no task"])]),
             h("div", { class: "muted small clip" }, [a.files.length ? a.files.map((f) => f.path).join(", ") : "no changes"]),
+            a.claimedBy ? h("div", { class: "muted small" }, [`continued by ${a.claimedBy}`]) : null,
+            t.role === "editor" && a.files.length && !a.claimedBy ? button("Continue with…", () => cmd("synapse.teamAdopt", a.id), "link") : null,
           ]),
         );
       }

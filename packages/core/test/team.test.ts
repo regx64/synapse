@@ -90,3 +90,58 @@ test("team mode is off unless enabled", async () => {
     await core.close();
   }
 });
+
+test("a teammate's agent's work can be continued; its owner is told, and viewers only watch", async () => {
+  const { alice, bob, remote } = team();
+  const root = path.dirname(remote);
+  const carol = path.join(root, "carol");
+  gitOut(root, "clone", "-q", remote, carol);
+  for (const [repo, name] of [[alice, "alice"], [bob, "bob"], [carol, "carol"]] as const) {
+    write(repo, ".synapse/config.json", JSON.stringify({ team: { enabled: true, name, intervalSec: 3600, members: { carol: "viewer" } } }));
+  }
+  const A = await SynapseCore.open({ workspace: alice, ephemeral: true });
+  const B = await SynapseCore.open({ workspace: bob, ephemeral: true });
+  const C = await SynapseCore.open({ workspace: carol, ephemeral: true });
+  try {
+    // Alice's agent got halfway through a task, then Alice went offline.
+    const alpha = await A.agents.add({ preset: "mock", id: "alpha", name: "Alpha" });
+    const t = A.collab.createTask({ title: "Add a discount cap", agentId: "alpha" });
+    A.store.updateAgent("alpha", { currentTaskId: t.id });
+    write(alpha.worktree.path, "src/pricing.ts", SHOP["src/pricing.ts"].replace("percent: number): number {", "percent: number, cap: number): number {"));
+    await A.refreshOwnership();
+    await A.handlers()["team.sync"]();
+
+    // Bob continues it with his own agent.
+    const beta = await B.agents.add({ preset: "mock", id: "beta", name: "Beta", start: true });
+    await B.handlers()["team.sync"]();
+    const r = await B.handlers()["team.adopt"]({ from: "@alice/alpha", to: "beta", note: "Alice is out today" });
+    assert.deepEqual(r.files, ["src/pricing.ts"]);
+    assert.equal(r.task!.title, "Add a discount cap (continued from alice)");
+    assert.match(fs.readFileSync(path.join(beta.worktree.path, "src/pricing.ts"), "utf8").replace(/\r\n/g, "\n"), /cap: number/);
+    assert.match(B.store.getAgent("beta")!.turn!.prompt, /continuing work that Alpha \(alice\) started[\s\S]*Note from the person: Alice is out today/);
+    await B.handlers()["team.sync"]();
+
+    // Alice is told, and can dismiss it.
+    const a = await A.handlers()["team.sync"]();
+    assert.equal(a.claimsOnMe.length, 1);
+    assert.equal(a.claimsOnMe[0]!.by, "bob");
+    const alert = A.store.snapshot().alerts.find((x) => x.kind === "team-claim");
+    assert.match(alert!.title, /bob continued Alpha's work on "Add a discount cap"/);
+    const after = await A.handlers()["team.dismissClaim"]({ id: a.claimsOnMe[0]!.id });
+    assert.deepEqual(after.claimsOnMe, []);
+    assert.ok(!A.store.snapshot().alerts.some((x) => x.kind === "team-claim"));
+
+    // Carol is a viewer: she sees everyone, publishes nothing, and cannot continue work.
+    await C.agents.add({ preset: "mock", id: "gamma", start: true });
+    const c = await C.handlers()["team.sync"]();
+    assert.equal(c.role, "viewer");
+    assert.deepEqual(c.peers.map((p) => p.person), ["alice", "bob"]);
+    assert.equal(c.peers.find((p) => p.person === "alice")!.agents[0]!.claimedBy, "bob");
+    assert.doesNotMatch(gitOut(alice, "ls-remote", "--refs", remote, "refs/synapse/team/*"), /carol/);
+    await assert.rejects(async () => C.handlers()["team.adopt"]({ from: "@alice/alpha", to: "gamma" }), /Viewers/);
+  } finally {
+    await A.close();
+    await B.close();
+    await C.close();
+  }
+});

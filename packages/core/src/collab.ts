@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as fsp from "node:fs/promises";
 import * as path from "node:path";
-import type { AgentMessage, AgentOwnership, Decision, DecisionPin, MessageKind, TakeoverResult, Task, TaskStatus } from "@synapse/protocol";
+import type { AgentMessage, AgentOwnership, Decision, DecisionPin, MessageKind, TakeoverResult, Task, TaskStatus, TeamAgent } from "@synapse/protocol";
 import { ErrorCodes, RpcError } from "@synapse/protocol";
 import type { AgentManager } from "./agents.js";
 import { checkAnchors, createAnchor, normalizePin, pinLabel, samePin, symbolAtLine } from "./anchors.js";
@@ -335,6 +335,42 @@ export class CollabService {
     } finally {
       agents.holdForTakeover(fromId, false);
     }
+  }
+
+  /**
+   * Continues a teammate's agent's work (team mode) in a local agent: its
+   * latest published snapshot, already fetched, moves into `toId`'s worktree,
+   * a task is created from theirs, and the agent is briefed.
+   */
+  async adoptFromTeammate(peer: TeamAgent, toId: string, note?: string): Promise<TakeoverResult> {
+    const to = this.store.getAgent(toId);
+    if (!to) throw new RpcError(ErrorCodes.NotFound, `No agent "${toId}"`);
+    if (!peer.snapshot || peer.snapshot === peer.baseCommit) throw new RpcError(ErrorCodes.Conflict, `${peer.name} has no published work to continue`);
+    if (to.status !== "idle") throw new RpcError(ErrorCodes.Conflict, `${to.name} must be running and idle to continue the work (it is ${to.status})`);
+    if (to.currentTaskId) throw new RpcError(ErrorCodes.Conflict, `${to.name} is on task ${to.currentTaskId}`);
+    const toOwn = await this.deps.refreshOwnership(toId);
+    if (toOwn?.files.length) throw new RpcError(ErrorCodes.Conflict, `${to.name} has changes of its own (${toOwn.files.length} file(s)). Merge or reset them first.`);
+    const present = await git(this.store.repoRoot, ["cat-file", "-t", peer.snapshot]).catch(() => "");
+    if (present !== "commit") throw new RpcError(ErrorCodes.Conflict, `${peer.name}'s work is not fetched yet: sync the team first`);
+
+    await this.deps.agents.adoptWork(toId, peer.snapshot, { baseCommit: peer.baseCommit, baseRef: peer.baseRef });
+    const files = peer.files.map((f) => f.path);
+    let task: Task | undefined;
+    if (peer.task) {
+      const t = this.createTask({ title: `${peer.task} (continued from ${peer.person})`.slice(0, 200), description: `Started by ${peer.name}.`, agentId: toId });
+      task = this.store.putTask({ ...t, status: "in_progress", startedAt: nowIso() });
+    }
+    const intro = [
+      `You are continuing work that ${peer.name} started on a teammate's machine (${peer.person}). It is already in your worktree${files.length ? ` (${files.length} file(s): ${files.slice(0, 20).join(", ")}${files.length > 20 ? ", …" : ""})` : ""}.`,
+      "Look at what is there before changing anything, keep what is done, and finish the rest.",
+      note?.trim() ? `\nNote from the person: ${note.trim().slice(0, BODY_LIMIT)}` : "",
+      "",
+      task ? this.taskPrompt(task) : `What ${peer.name} was asked to do is not known; work from the changes and the note.`,
+    ].join("\n");
+    this.deps.agents.prompt(toId, this.composePrompt(toId, intro, true));
+    if (task) this.store.updateAgent(toId, { currentTaskId: task.id });
+    this.deps.log(`${toId} continues ${peer.id} (${files.length} file(s), ${peer.snapshot.slice(0, 10)})`);
+    return { to: this.store.getAgent(toId)!, task: task && this.store.getTask(task.id), commit: peer.snapshot, files };
   }
 
   private handOff(t: Task): void {

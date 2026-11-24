@@ -44,6 +44,9 @@ Coordination
   status                             the collaboration board
   alerts                             only what needs you now (approvals, conflicts, errors, reviews…)
   team [sync | leave]                teammates' agents via the git remote (team mode: synapse.config.json)
+  team adopt <@person/agent> <your-agent> [--note TEXT]
+                                     continue a teammate's agent's work with one of yours
+  team dismiss <claim-id>            dismiss a teammate's claim on one of your agents
   owners [--agent ID]                files and symbols each agent owns
   conflicts [--check]                conflicts between agents
   approvals                          pending approvals
@@ -362,14 +365,21 @@ async function run(c: SynapseClient, cmd: string, sub: string | undefined, rest:
       return 0;
     }
     case "team": {
-      const t = sub === "sync" ? await c.call("team.sync") : sub === "leave" ? await c.call("team.leave") : await c.call("team.status");
+      if (sub === "adopt") {
+        const r = await c.call("team.adopt", { from: need(rest[0], "teammate's agent (@person/agent)"), to: need(rest[1], "your agent"), note: v.note as string | undefined });
+        out(r, () => `${r.to.id} continues ${rest[0]}${r.task ? ` as ${r.task.id}` : ""}: ${r.files.length} file(s)`);
+        return 0;
+      }
+      const t =
+        sub === "sync" ? await c.call("team.sync") : sub === "leave" ? await c.call("team.leave") : sub === "dismiss" ? await c.call("team.dismissClaim", { id: need(rest[0], "claim id") }) : await c.call("team.status");
       out(t, () => {
         if (!t.enabled) return 'team mode is off; enable it with "team": { "enabled": true } in synapse.config.json';
-        const lines = [`you are "${t.person}" on ${t.remote}${t.lastSync ? `, last sync ${t.lastSync}` : ""}${t.error ? `\n  error: ${t.error}` : ""}`];
+        const lines = [`you are "${t.person}" (${t.role}) on ${t.remote}${t.lastSync ? `, last sync ${t.lastSync}` : ""}${t.error ? `\n  error: ${t.error}` : ""}`];
+        for (const cl of t.claimsOnMe) lines.push(`  ! ${cl.by} continued ${cl.agent}'s work in their ${cl.byAgent} (dismiss: team dismiss ${cl.id})`);
         if (!t.peers.length) lines.push("  no teammates yet");
         for (const p of t.peers) {
           lines.push(`  ${p.person}${p.stale ? " (not updated recently)" : ""}`);
-          for (const a of p.agents) lines.push(`    ${a.name.padEnd(24)} ${a.status.padEnd(10)} ${a.task ?? ""}${a.files.length ? `  ${a.files.length} file(s)` : ""}`);
+          for (const a of p.agents) lines.push(`    ${a.id.padEnd(24)} ${a.status.padEnd(10)} ${a.task ?? ""}${a.files.length ? `  ${a.files.length} file(s)` : ""}${a.claimedBy ? `  (continued by ${a.claimedBy})` : ""}`);
         }
         return lines.join("\n");
       });
@@ -432,7 +442,7 @@ async function run(c: SynapseClient, cmd: string, sub: string | undefined, rest:
     }
     case "takeover": {
       const r = await c.call("agents.takeover", { from: need(sub, "from agent"), to: need(rest[0], "to agent"), taskId: v.task as string | undefined, note: v.note as string | undefined });
-      out(r, () => `${r.to.id} took over ${r.task ? `${r.task.id} (${r.task.title})` : "the request"} from ${r.from.id}: ${r.files.length} file(s) moved, kept at ${r.commit.slice(0, 10)}`);
+      out(r, () => `${r.to.id} took over ${r.task ? `${r.task.id} (${r.task.title})` : "the request"} from ${r.from?.id}: ${r.files.length} file(s) moved, kept at ${r.commit.slice(0, 10)}`);
       return 0;
     }
     case "decisions": {

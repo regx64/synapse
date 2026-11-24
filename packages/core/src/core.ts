@@ -242,6 +242,15 @@ export class SynapseCore {
       "team.status": () => this.team.status(),
       "team.sync": () => this.team.sync(),
       "team.leave": () => this.team.leave(),
+      "team.adopt": async (p) => {
+        if (this.team.role() !== "editor") throw new RpcError(ErrorCodes.Unauthorized, "Viewers in team mode cannot continue teammates' work");
+        const peer = this.team.peerAgent(req(p, "from"));
+        if (!peer) throw new RpcError(ErrorCodes.NotFound, `No teammate's agent "${p.from}" (sync the team first)`);
+        const r = await this.collab.adoptFromTeammate(peer, req(p, "to"), p.note);
+        this.team.addClaim({ byAgent: r.to.id, agent: peer.id, task: peer.task });
+        return r;
+      },
+      "team.dismissClaim": (p) => this.team.dismissClaim(req(p, "id")),
       "comments.resolve": (p) => this.comments.resolve(req(p, "id"), p.status),
       "agents.takeover": (p) => this.collab.takeover(req(p, "from"), req(p, "to"), { taskId: p.taskId, note: p.note }),
       "agents.prompt": (p) => {

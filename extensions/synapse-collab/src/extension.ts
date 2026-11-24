@@ -138,6 +138,25 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     const a = await pickAgent(id, (x) => x.status === "working" || x.status === "awaiting-approval");
     if (a) await conn.call("agents.cancel", { id: a });
   });
+  register("synapse.teamAdopt", async (peerId) => {
+    const state = conn.state;
+    const peer = state?.team.peers.flatMap((p) => p.agents).find((x) => x.id === peerId);
+    if (!peer) return;
+    const candidates = (state?.agents ?? []).filter((x) => x.status === "idle" && !x.currentTaskId && !(state?.ownership[x.id]?.files.length));
+    if (!candidates.length) {
+      void vscode.window.showWarningMessage("Synapse: none of your agents can continue it. It needs a running, idle agent without changes of its own.");
+      return;
+    }
+    const to = await vscode.window.showQuickPick(
+      candidates.map((x) => ({ label: x.name, id: x.id })),
+      { placeHolder: `Which of your agents continues ${peer.name}'s work${peer.task ? ` on "${peer.task}"` : ""}?` },
+    );
+    if (!to) return;
+    const note = await vscode.window.showInputBox({ prompt: `Note for ${to.label} (optional)` });
+    if (note === undefined) return;
+    const r = await conn.call("team.adopt", { from: peer.id, to: to.id, note: note || undefined });
+    void vscode.window.showInformationMessage(`Synapse: ${r.to.name} continues ${peer.name}'s work (${r.files.length} file(s)). ${peer.person} will be told at the next sync.`);
+  });
   register("synapse.liveDiff", async (id) => {
     const a = await pickAgent(id);
     if (a) LiveDiffPanel.show(conn, a);

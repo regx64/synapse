@@ -277,6 +277,20 @@ synapse team leave
 the remote, like pushing a branch, so it is off by default; anyone who can
 read the remote can read it. `name` defaults to your git `user.name`.
 
+**Continuing a teammate's work.** When a teammate is away and their agent
+stopped halfway, **Continue with…** on its card (or `synapse team adopt
+@alice/claude codex`) moves its latest published work into one of your idle
+agents, creates a task from theirs and briefs your agent. Your teammate sees
+an alert at their next sync ("bob continued Claude's work"), with **Reset my
+agent** so the two of you don't keep working on the same changes, or
+**Dismiss**.
+
+**Roles.** In the shared `synapse.config.json`, `"members": { "carol":
+"viewer" }` makes Carol a viewer: her Synapse fetches and shows everyone's
+agents but publishes nothing and cannot continue others' work. Everyone else
+is an editor. Roles coordinate people; they are not access control, which is
+whatever your git remote allows.
+
 ## Privacy
 
 Synapse collects no telemetry and sends nothing about you. Crash reports of

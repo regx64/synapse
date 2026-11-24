@@ -57,7 +57,7 @@ export class StateStore extends EventEmitter {
   private readonly messages = new Map<string, AgentMessage>();
   private readonly decisions = new Map<string, Decision>();
   private readonly comments = new Map<string, CodeComment>();
-  private team: TeamState = { enabled: false, person: "", remote: "origin", peers: [] };
+  private team: TeamState = { enabled: false, person: "", role: "editor", remote: "origin", peers: [], claimsOnMe: [] };
   private audit: AuditEntry[] = [];
   private readonly backlog: CoreEvent[] = [];
   private readonly persistSoon = debounce(() => this.persistNow(), 200);
@@ -290,6 +290,11 @@ export class StateStore extends EventEmitter {
     this.emitEvent("decision.updated", d);
     this.persistSoon();
     return d;
+  }
+
+  /** Where per-repository files other than state.json go (undefined when ephemeral). */
+  get dataDir(): string | undefined {
+    return this.stateFile ? path.dirname(this.stateFile) : undefined;
   }
 
   getTeam(): TeamState {

@@ -53,7 +53,8 @@ export interface Guidance {
 
 /** Result of handing one agent's unfinished work to another. */
 export interface TakeoverResult {
-  from: AgentState;
+  /** The agent whose work moved (absent when it was a teammate's agent). */
+  from?: AgentState;
   to: AgentState;
   /** The task that moved, if any. */
   task?: Task;
@@ -518,6 +519,20 @@ export interface TeamAgent {
   baseCommit: string;
   snapshot?: string;
   files: FileChange[];
+  /** A teammate continued this agent's work (see team.adopt). */
+  claimedBy?: string;
+}
+
+/** A teammate continued one of your agents' work (or you continued theirs). */
+export interface TeamClaim {
+  id: string;
+  /** Who continued it, and with which of their agents. */
+  by: string;
+  byAgent: string;
+  /** The agent whose work was continued: "@<person>/<agent id>". */
+  agent: string;
+  task?: string;
+  at: string;
 }
 
 export interface TeamPeer {
@@ -532,6 +547,14 @@ export interface TeamState {
   enabled: boolean;
   /** How this person appears to teammates. */
   person: string;
+  /**
+   * From team.members in the shared config. "editor" (default) publishes and
+   * can continue teammates' work; "viewer" only watches. A coordination aid:
+   * access itself is whatever the git remote allows.
+   */
+  role: "editor" | "viewer";
+  /** Teammates who continued your agents' work, not yet dismissed. */
+  claimsOnMe: TeamClaim[];
   remote: string;
   lastSync?: string;
   error?: string;
@@ -549,7 +572,8 @@ export type AlertKind =
   | "proposed-decision"
   | "stale-decision"
   | "task-review"
-  | "risky-command";
+  | "risky-command"
+  | "team-claim";
 
 /** Something the person should act on. Derived from state; it goes away when acted on. */
 export interface Alert {
@@ -709,6 +733,15 @@ export interface CoreMethods {
   "team.sync": { params: void; result: TeamState };
   /** Removes everything this person published from the remote. */
   "team.leave": { params: void; result: TeamState };
+  /**
+   * Continues a teammate's agent's work in one of yours: its latest published
+   * snapshot moves into your agent's worktree, a task is created from theirs,
+   * your agent is briefed, and a claim tells the teammate. Your agent must be
+   * running, idle and without changes of its own. Needs the editor role.
+   */
+  "team.adopt": { params: { from: string; to: string; note?: string }; result: TakeoverResult };
+  /** Dismisses a teammate's claim on one of your agents. */
+  "team.dismissClaim": { params: { id: string }; result: TeamState };
   "comments.resolve": { params: { id: string; status?: CodeComment["status"] }; result: CodeComment };
   "agents.takeover": { params: { from: string; to: string; taskId?: string; note?: string }; result: TakeoverResult };
   /** Throws the agent's worktree back to a ref (default: the current base). */
