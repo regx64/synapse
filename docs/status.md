@@ -74,11 +74,16 @@ Done criteria (50 beta users, retention measurement) are outside what code can d
 
 ## Known limits
 
-- **Call matching.** JavaScript/TypeScript and Python calls are resolved
-  through imports. Member calls (`obj.method()`), Go, Rust and Java still
-  match by name, so methods or functions with the same name can raise a
-  false signature-change warning there. Workspace-package imports are matched
-  by package folder name, not by `package.json` resolution.
+- **Call matching.** Calls are resolved through imports in every supported
+  language: JavaScript/TypeScript and Python imports, Go import paths and
+  packages (folders), Java class and static imports and packages, Rust `use`
+  declarations and `crate::` paths. A method call (`obj.add()`) counts only
+  where the calling file can see the defining file, package or class. What
+  remains approximate: the type of `obj` is not inferred, so in a file that
+  does see the class, a same-named method of another class can still raise a
+  warning; JavaScript workspace-package imports are matched by package folder
+  name, not by `package.json` resolution; Rust `super::` paths are matched by
+  module name.
 - **Agents' own tools.** Agents such as Claude Code edit files and run
   commands with their own tools. Synapse sees those edits (file watching and
   snapshots) but cannot stop a shell command from writing outside the

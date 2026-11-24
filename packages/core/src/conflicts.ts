@@ -85,7 +85,8 @@ export function detectConflicts(input: DetectInput): Conflict[] {
           if (other.agentId === owner.agentId) continue;
           const newParams =
             sym.change === "removed" ? undefined : input.details(owner.agentId).get(file.path)?.newParsed?.symbols.find((s) => s.name === sym.name)?.params;
-          const sites = findCallSites(other.agentId, input.details(other.agentId), shortName, file.path, sym.kind === "method");
+          const className = sym.kind === "method" && sym.name.includes(".") ? sym.name.slice(0, sym.name.lastIndexOf(".")).split(".").pop() : undefined;
+          const sites = findCallSites(other.agentId, input.details(other.agentId), shortName, file.path, sym.kind === "method", className);
           // A call that already fits the new signature is not a problem.
           const newSites = sites.filter((s) => s.isNew && !(sym.change !== "removed" && fits(s.argCount, newParams)));
           if (newSites.length === 0) continue;
@@ -153,7 +154,7 @@ function fits(argCount: number | undefined, params: { min: number; max: number }
   return argCount >= params.min && argCount <= params.max;
 }
 
-function findCallSites(agentId: string, details: Map<string, FileDetail>, shortName: string, defPath: string, isMethod: boolean): CallSite[] {
+function findCallSites(agentId: string, details: Map<string, FileDetail>, shortName: string, defPath: string, isMethod: boolean, className?: string): CallSite[] {
   const fam = family(defPath);
   const sites: CallSite[] = [];
   for (const d of details.values()) {
@@ -164,7 +165,7 @@ function findCallSites(agentId: string, details: Map<string, FileDetail>, shortN
       const name = binding?.kind === "named" ? binding.imported : call.callee;
       if (name !== shortName && !(binding?.kind === "default")) continue;
       if (binding?.kind === "default" && call.callee !== shortName && !moduleMatches(d.path, binding.source, defPath)) continue;
-      if (!refersTo(d.path, parsed, call, binding, defPath, isMethod)) continue;
+      if (!refersTo(d.path, parsed, call, binding, defPath, isMethod, { className, text: d.newText ?? undefined })) continue;
       const isNew =
         d.status === "added" ||
         (call.inSymbol !== undefined && d.changedSymbols.has(call.inSymbol)) ||
@@ -176,11 +177,21 @@ function findCallSites(agentId: string, details: Map<string, FileDetail>, shortN
 }
 
 /**
- * Whether a call in `callPath` can refer to the function defined in
- * `defPath`. Imports are resolved for JavaScript/TypeScript and Python;
- * anything that cannot be resolved (member calls, other languages, files
- * without imports) counts as a possible match, so real conflicts are not
- * missed.
+ * Whether a call in `callPath` can refer to the function or method defined
+ * in `defPath`, resolved through imports:
+ *
+ *  - a call through a module, package or class (`pricing.apply()`, Go
+ *    `pkg.F()`, Java `Pricing.apply()`, Rust `crate::pricing::apply()`)
+ *    refers to it only if that name resolves to `defPath`;
+ *  - a method call (`obj.add()`) refers to it only if the calling file can
+ *    see where it is defined: it imports that file or package, mentions the
+ *    class, or (Go, Java) is in the same package;
+ *  - a plain call: JavaScript/TypeScript and Python follow imports; Go sees
+ *    its own package (folder) and dot imports; Java its own package and
+ *    static imports; Rust `use` declarations.
+ *
+ * Files without imports (scripts) stay a possible match, so real conflicts
+ * are not missed.
  */
 export function refersTo(
   callPath: string,
@@ -189,13 +200,44 @@ export function refersTo(
   binding: ImportBinding | undefined,
   defPath: string,
   isMethod: boolean,
+  opts: { className?: string; text?: string } = {},
 ): boolean {
   if (callPath === defPath) return true;
-  if (isMethod || call.member) return true;
   const fam = family(callPath);
+  const sameDir = posix.dirname(callPath) === posix.dirname(defPath);
+  const resolves = (b: ImportBinding) =>
+    moduleMatches(callPath, b.source, defPath) || (fam === "rust" && b.kind === "named" && moduleMatches(callPath, `${b.source}::${b.imported}`, defPath));
+  const wildcard = () => parsed.imports.some((b) => b.kind === "wildcard" && resolves(b));
+
+  // Through a module, package or class name.
+  if (call.member && call.object) {
+    if (fam === "rust" && /^(crate|super|self)(::|$)/.test(call.object)) return moduleMatches(callPath, call.object, defPath);
+    const head = fam === "rust" ? call.object.split("::")[0]! : call.object;
+    const ns = parsed.imports.find((b) => b.local === head && b.kind !== "wildcard");
+    if (ns && (ns.kind === "namespace" || fam === "java" || fam === "rust")) {
+      if (fam === "rust" && call.object.includes("::")) {
+        const rest = call.object.split("::").slice(1).join("::");
+        return moduleMatches(callPath, `${ns.source}::${ns.imported}::${rest}`, defPath) || moduleMatches(callPath, `${ns.source}::${rest}`, defPath);
+      }
+      return resolves(ns);
+    }
+  }
+
+  // A method, or a call through an object: the calling file must be able to see the definition.
+  if (call.member || isMethod) {
+    if ((fam === "go" || fam === "java") && sameDir) return true;
+    if (parsed.imports.some(resolves)) return true;
+    if (opts.className && opts.text && new RegExp(`\\b${opts.className.replace(/[^\w$]/g, "")}\\b`).test(opts.text)) return true;
+    return !parsed.hasImports && fam !== "go" && fam !== "java" && fam !== "rust";
+  }
+
+  // Plain calls.
+  if (fam === "go") return sameDir || wildcard();
+  if (fam === "java") return sameDir || (binding ? resolves(binding) : wildcard());
+  if (fam === "rust") return binding ? resolves(binding) : wildcard();
   if (fam !== "js" && fam !== "python") return true;
-  if (binding) return moduleMatches(callPath, binding.source, defPath);
-  if (parsed.imports.some((b) => b.kind === "wildcard" && moduleMatches(callPath, b.source, defPath))) return true;
+  if (binding) return resolves(binding);
+  if (wildcard()) return true;
   // A function of that name defined in the calling file shadows the other one.
   if (parsed.symbols.some((s) => s.name === call.callee && (s.kind === "function" || s.kind === "class"))) return false;
   // In a module, a free name that is neither imported nor defined is not another file's function.
@@ -242,6 +284,26 @@ export function moduleMatches(fromPath: string, source: string, targetPath: stri
     }
     mod = source.split(".").join("/");
     return [`${mod}.py`, `${mod}/__init__.py`].some((c) => targetPath === c || targetPath.endsWith(`/${c}`));
+  }
+  if (fam === "go") {
+    // An import path names a package: a folder, matched on its trailing segments.
+    const dir = posix.dirname(targetPath);
+    return dir !== "." && (source === dir || source.endsWith(`/${dir}`));
+  }
+  if (fam === "java") {
+    // a.b.Pricing (a class) or a.b (a package, from a wildcard import).
+    const asPath = source.split(".").join("/");
+    if (targetPath === `${asPath}.java` || targetPath.endsWith(`/${asPath}.java`)) return true;
+    const dir = posix.dirname(targetPath);
+    return dir === asPath || dir.endsWith(`/${asPath}`);
+  }
+  if (fam === "rust") {
+    // crate::a::b, super::a, self::a: a module file a/b.rs or a/b/mod.rs (or the crate root).
+    const segs = source.split("::").filter((x) => x && x !== "crate" && x !== "self" && x !== "super");
+    const noExt = targetPath.replace(/\.rs$/, "").replace(/\/mod$/, "");
+    if (!segs.length) return /(^|\/)(lib|main)\.rs$/.test(targetPath) || noExt === posix.dirname(targetPath);
+    const mod = segs.join("/");
+    return noExt === mod || noExt.endsWith(`/${mod}`);
   }
   return true;
 }
