@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as fsp from "node:fs/promises";
 import * as path from "node:path";
-import type { AddAgentParams, AgentPolicy, AgentState, Approval, AuditEntry, PermissionQuery, PolicyDecision, PresetInfo, ToolCallSummary } from "@synapse/protocol";
+import type { AddAgentParams, AgentPolicy, AgentState, Approval, AuditEntry, Guidance, PermissionQuery, PolicyDecision, PresetInfo, ToolCallSummary, WorktreeInfo } from "@synapse/protocol";
 import { CORE_API_VERSION, ErrorCodes, RpcError } from "@synapse/protocol";
 import { AcpAgentProcess, type AcpMcpServerStdio, type AcpPermissionOutcome, type AcpPermissionRequest, type AcpPlanUpdate, type AcpSessionUpdate, type AcpToolCallUpdate } from "./acp.js";
 import type { StateStore } from "./store.js";
@@ -12,6 +12,7 @@ import { commandFromRawInput, evaluatePermission, isRisky, matchesAny, mergePoli
 import { addSecret, redact } from "./redact.js";
 
 const MAX_TOOL_CALLS = 30;
+const MAX_GUIDANCE = 4000;
 const MAX_MESSAGE_TAIL = 4000;
 
 export interface AgentManagerDeps {
@@ -36,6 +37,9 @@ export interface AgentManagerDeps {
  */
 export class AgentManager {
   private readonly procs = new Map<string, AcpAgentProcess>();
+  /** Agents whose turn end is handled by a takeover, not by the task graph. */
+  private readonly takingOver = new Set<string>();
+  private readonly turnWaiters = new Map<string, (() => void)[]>();
   private readonly pendingPermissions = new Map<string, { agentId: string; resolve: (o: AcpPermissionOutcome) => void; options: Approval["options"] }>();
   private readonly watchers = new Map<string, fs.FSWatcher>();
   /** Tool calls that went through a permission request, and raw inputs seen, for the audit log. */
@@ -147,6 +151,7 @@ export class AgentManager {
       this.procs.delete(id);
       this.cancelPermissions(id);
       this.unwatch(id);
+      this.releaseWaiters(id);
       const a = this.store.getAgent(id);
       if (!a) return;
       const clean = code === 0 || signal === "SIGTERM";
@@ -195,12 +200,83 @@ export class AgentManager {
     if (agent.status === "working" || agent.status === "awaiting-approval") {
       throw new RpcError(ErrorCodes.Conflict, `Agent "${id}" is busy with another turn`);
     }
-    this.store.updateAgent(id, { status: "working", turn: { prompt: text, startedAt: nowIso() }, lastMessage: "", plan: undefined, error: undefined });
-    this.store.emitEvent("agent.output", { agentId: id, kind: "turn", text: `> ${text}` });
+    // Guidance left over (the agent stopped before it could be given) rides along.
+    const pending = agent.guidance ?? [];
+    const full = pending.length ? `${text}\n\n${guidanceBlock(pending)}` : text;
+    this.store.updateAgent(id, { status: "working", turn: { prompt: full, startedAt: nowIso() }, guidance: undefined, lastMessage: "", plan: undefined, error: undefined });
+    this.store.emitEvent("agent.output", { agentId: id, kind: "turn", text: `> ${full}` });
+    this.runTurn(id, proc, full);
+  }
+
+  private runTurn(id: string, proc: AcpAgentProcess, text: string): void {
     proc.prompt(text).then(
       (stopReason) => this.endTurn(id, proc, stopReason),
       (err: Error) => this.endTurn(id, proc, "error", err.message),
     );
+  }
+
+  /**
+   * Guidance from the person for a working agent. "now" interrupts the turn;
+   * "next" waits for it to end. Either way a follow-up turn continues the same
+   * work (and task) with the guidance. An idle agent just gets a prompt.
+   */
+  steer(id: string, text: string, mode: Guidance["mode"] = "next"): AgentState {
+    const agent = this.require(id);
+    const t = String(text ?? "").trim();
+    if (!t) throw new RpcError(ErrorCodes.InvalidParams, "Guidance needs some text");
+    if (t.length > MAX_GUIDANCE) throw new RpcError(ErrorCodes.InvalidParams, `Guidance is limited to ${MAX_GUIDANCE} characters`);
+    if (mode !== "now" && mode !== "next") throw new RpcError(ErrorCodes.InvalidParams, `Unknown mode "${mode}"`);
+    if (!this.procs.get(id)?.running) throw new RpcError(ErrorCodes.Conflict, `Agent "${id}" is not running. Start it first.`);
+    if (this.takingOver.has(id)) throw new RpcError(ErrorCodes.Conflict, `${agent.name}'s work is being handed over`);
+    if (agent.status !== "working" && agent.status !== "awaiting-approval") {
+      this.prompt(id, t);
+      return this.store.getAgent(id)!;
+    }
+    const next = this.store.updateAgent(id, { guidance: [...(agent.guidance ?? []), { text: t, mode, at: nowIso() }] })!;
+    this.store.emitEvent("agent.output", { agentId: id, kind: "turn", text: `guidance (${mode === "now" ? "interrupting" : "after this turn"}): ${t}` });
+    if (mode === "now") this.cancel(id, true);
+    return next;
+  }
+
+  /** Resolves when the agent's current turn has ended (at once if it is not in one). */
+  waitForTurnEnd(id: string, timeoutMs: number): Promise<boolean> {
+    const a = this.store.getAgent(id);
+    if (!a || (a.status !== "working" && a.status !== "awaiting-approval")) return Promise.resolve(true);
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => resolve(false), timeoutMs);
+      const list = this.turnWaiters.get(id) ?? [];
+      list.push(() => (clearTimeout(timer), resolve(true)));
+      this.turnWaiters.set(id, list);
+    });
+  }
+
+  private releaseWaiters(id: string): void {
+    const list = this.turnWaiters.get(id);
+    this.turnWaiters.delete(id);
+    for (const w of list ?? []) w();
+  }
+
+  /** While set, the agent's turn end belongs to a takeover: no follow-up guidance, no task update. */
+  holdForTakeover(id: string, hold: boolean): void {
+    if (hold) this.takingOver.add(id);
+    else this.takingOver.delete(id);
+  }
+
+  /** Puts `commit` (work from another agent) into this agent's worktree, measured against `base`. */
+  async adoptWork(id: string, commit: string, base: Pick<WorktreeInfo, "baseCommit" | "baseRef">): Promise<AgentState> {
+    const agent = this.require(id);
+    await this.deps.worktrees.resetTo(id, commit);
+    const next = this.store.updateAgent(id, { worktree: { ...agent.worktree, baseCommit: base.baseCommit, baseRef: base.baseRef } })!;
+    this.deps.onFilesChanged(id);
+    return next;
+  }
+
+  /** Discards the agent's work: its worktree goes back to its base commit. */
+  async releaseWork(id: string): Promise<AgentState> {
+    const agent = this.require(id);
+    await this.deps.worktrees.resetTo(id, agent.worktree.baseCommit);
+    this.deps.onFilesChanged(id);
+    return this.store.getAgent(id)!;
   }
 
   private endTurn(id: string, proc: AcpAgentProcess, stopReason: string, error?: string): void {
@@ -213,11 +289,30 @@ export class AgentManager {
     });
     this.store.emitEvent("agent.output", { agentId: id, kind: "turn", text: `turn ended: ${stopReason}${error ? ` (${error})` : ""}` });
     this.deps.onFilesChanged(id);
+    this.releaseWaiters(id);
+    if (this.takingOver.has(id)) return;
+    // Guidance from the person: the same work continues in a follow-up turn.
+    const guidance = this.store.getAgent(id)?.guidance ?? [];
+    if (guidance.length && proc.running && stopReason !== "refusal") {
+      const turn = agent.turn;
+      const text = guidanceBlock(guidance, stopReason === "cancelled");
+      this.store.updateAgent(id, {
+        status: "working",
+        guidance: undefined,
+        error: undefined,
+        turn: { prompt: turn?.prompt ?? text, startedAt: turn?.startedAt ?? nowIso(), steered: (turn?.steered ?? 0) + 1 },
+      });
+      this.store.emitEvent("agent.output", { agentId: id, kind: "turn", text: `> ${text}` });
+      this.runTurn(id, proc, text);
+      return;
+    }
     this.deps.onTurnEnd?.(id, stopReason, error);
   }
 
-  cancel(id: string): void {
-    this.require(id);
+  /** Stops the current turn. Guidance waiting for it is dropped, unless it is what interrupted the turn. */
+  cancel(id: string, keepGuidance = false): void {
+    const agent = this.require(id);
+    if (!keepGuidance && agent.guidance?.length) this.store.updateAgent(id, { guidance: undefined });
     this.procs.get(id)?.cancel();
     this.cancelPermissions(id);
   }
@@ -506,4 +601,15 @@ export class AgentManager {
     this.watchers.get(agentId)?.close();
     this.watchers.delete(agentId);
   }
+}
+
+/** The follow-up prompt that gives an agent the person's guidance. */
+function guidanceBlock(guidance: Guidance[], interrupted = false): string {
+  return [
+    interrupted
+      ? "The person interrupted your turn to add guidance. Continue the same work with it in mind; don't start over, build on what you have already done."
+      : "Guidance from the person for the work you are doing. Continue the same work with it in mind; don't start over, build on what you have already done.",
+    "",
+    ...guidance.map((g) => `- ${g.text}`),
+  ].join("\n");
 }

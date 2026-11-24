@@ -34,6 +34,8 @@ failing tests), `-32004` not found.
 | `agents.start` / `stop` / `restart` | `{ id }` | `AgentState` |
 | `agents.prompt` | `{ id, text }` | `{ accepted: true }`; progress arrives as events |
 | `agents.cancel` | `{ id }` | `null` |
+| `agents.steer` | `{ id, text, mode?: "next" \| "now" }` | `AgentState`. Guidance for a working agent: after the turn, or interrupting it; the same work (and task) continues in a follow-up turn. An idle agent gets it as a prompt |
+| `agents.takeover` | `{ from, to, taskId?, note? }` | `TakeoverResult`. `to` continues `from`'s unfinished work: `from` is stopped, its changes move into `to`'s worktree, the task is reassigned, `to` is briefed |
 | `agents.reset` | `{ id, ref? }` | `AgentState` (worktree reset to the base, changes discarded) |
 | `ownership.get` | `{ agentId? }` | `AgentOwnership[]` |
 | `ownership.refresh` | `{ agentId? }` | `AgentOwnership[]` (also rechecks conflicts) |

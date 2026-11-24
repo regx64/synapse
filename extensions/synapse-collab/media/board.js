@@ -318,22 +318,27 @@
     const running = a.status !== "stopped" && a.status !== "error";
     const busy = a.status === "working" || a.status === "awaiting-approval";
     const textarea = /** @type {HTMLTextAreaElement} */ (
-      h("textarea", { rows: 2, placeholder: running ? `Tell ${a.name} what to do…` : "Start the agent to send a prompt", disabled: !running || busy })
+      h("textarea", {
+        rows: 2,
+        placeholder: !running ? "Start the agent to send a prompt" : busy ? `Add guidance for ${a.name} while it works…` : `Tell ${a.name} what to do…`,
+        disabled: !running,
+      })
     );
     textarea.value = drafts[a.id] || "";
     textarea.addEventListener("input", () => {
       drafts[a.id] = textarea.value;
       vscode.setState({ drafts, tab: ui.tab });
     });
-    const send = () => {
+    /** @param {"now"|"next"} [mode] */
+    const send = (mode) => {
       if (!textarea.value.trim()) return;
-      vscode.postMessage({ type: "prompt", id: a.id, text: textarea.value });
+      vscode.postMessage(busy ? { type: "steer", id: a.id, text: textarea.value, mode: mode || "next" } : { type: "prompt", id: a.id, text: textarea.value });
       drafts[a.id] = "";
       vscode.setState({ drafts, tab: ui.tab });
       textarea.value = "";
     };
     textarea.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) send();
+      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) send("next");
     });
 
     return h("div", { class: "card agent", style: { borderLeftColor: a.color } }, [
@@ -344,11 +349,25 @@
         h("span", { class: "spacer" }),
         running ? button("Stop", () => cmd("synapse.stopAgent", a.id)) : button("Start", () => cmd("synapse.startAgent", a.id), "primary"),
         busy ? button("Cancel", () => cmd("synapse.cancelAgent", a.id)) : null,
+        a.currentTaskId || busy || (a.error && a.turn) ? button("Hand off…", () => cmd("synapse.takeover", a.id)) : null,
         button("⋯", () => cmd("synapse.agentMenu", a.id), "icon"),
       ]),
       h("div", { class: "muted small" }, [`${a.worktree.branch}${a.agentInfo && a.agentInfo.name ? ` · ${a.agentInfo.name} ${a.agentInfo.version || ""}` : ""}`]),
       a.error ? h("div", { class: "error" }, [a.error]) : null,
-      a.turn ? h("div", { class: "turn" }, [h("span", { class: "muted" }, ["› "]), a.turn.prompt.slice(0, 240)]) : null,
+      a.turn
+        ? h("div", { class: "turn" }, [
+            h("span", { class: "muted" }, ["› "]),
+            a.turn.prompt.slice(0, 240),
+            a.turn.steered ? h("span", { class: "pill" }, [`steered ${a.turn.steered}×`]) : null,
+          ])
+        : null,
+      a.guidance && a.guidance.length
+        ? h(
+            "ul",
+            { class: "guidance" },
+            a.guidance.map((g) => h("li", { class: "small" }, [h("span", { class: "muted" }, [g.mode === "now" ? "⏸ interrupting: " : "⏳ after this turn: "]), g.text])),
+          )
+        : null,
       a.plan && a.plan.length
         ? h(
             "ul",
@@ -379,7 +398,13 @@
             ),
           ])
         : h("div", { class: "muted small" }, ["No changes yet."]),
-      h("div", { class: "prompt" }, [textarea, button("Send", send, "primary")]),
+      h(
+        "div",
+        { class: busy ? "prompt steer" : "prompt" },
+        busy
+          ? [textarea, h("div", { class: "row" }, [button("After this turn", () => send("next"), "primary"), button("Interrupt now", () => send("now"))])]
+          : [textarea, button("Send", () => send(), "primary")],
+      ),
       button("Show output", () => cmd("synapse.showOutput", a.id), "link"),
     ]);
   }

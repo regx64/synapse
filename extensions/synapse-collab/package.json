@@ -84,6 +84,16 @@
         "category": "Synapse"
       },
       {
+        "command": "synapse.steerAgent",
+        "title": "Add Guidance While an Agent Works\u2026",
+        "category": "Synapse"
+      },
+      {
+        "command": "synapse.takeover",
+        "title": "Hand Work Off to Another Agent\u2026",
+        "category": "Synapse"
+      },
+      {
         "command": "synapse.openWorktree",
         "title": "Open Agent Worktree in New Window",
         "category": "Synapse"

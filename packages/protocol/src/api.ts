@@ -43,6 +43,26 @@ export interface WorktreeInfo {
   baseCommit: string;
 }
 
+/** Guidance the person gives an agent during a turn. */
+export interface Guidance {
+  text: string;
+  /** "now": the turn is interrupted and continues with it; "next": it follows when the turn ends. */
+  mode: "now" | "next";
+  at: string;
+}
+
+/** Result of handing one agent's unfinished work to another. */
+export interface TakeoverResult {
+  from: AgentState;
+  to: AgentState;
+  /** The task that moved, if any. */
+  task?: Task;
+  /** The commit holding the work that moved (also kept at refs/synapse/takeovers/…). */
+  commit: string;
+  /** Files carried over. */
+  files: string[];
+}
+
 export interface PlanEntry {
   content: string;
   status: "pending" | "in_progress" | "completed";
@@ -68,8 +88,10 @@ export interface AgentState extends Omit<AgentConfig, "env"> {
   /** Agent implementation info from the ACP initialize response. */
   agentInfo?: { name?: string; version?: string };
   error?: string;
-  /** The current or last prompt. */
-  turn?: { prompt: string; startedAt: string; endedAt?: string; stopReason?: string };
+  /** The current or last prompt. `steered` counts guidance turns that continued it. */
+  turn?: { prompt: string; startedAt: string; endedAt?: string; stopReason?: string; steered?: number };
+  /** Guidance from the person waiting to be given to the agent (see agents.steer). */
+  guidance?: Guidance[];
   /** Tail of the agent's last message, for the board. */
   lastMessage?: string;
   plan?: PlanEntry[];
@@ -526,6 +548,20 @@ export interface CoreMethods {
   /** Sends a prompt. Returns as soon as the turn starts; follow progress through events. */
   "agents.prompt": { params: { id: string; text: string }; result: { accepted: true } };
   "agents.cancel": { params: { id: string }; result: null };
+  /**
+   * Gives a working agent guidance from the person. "now" interrupts the turn
+   * and continues it with the guidance; "next" (default) sends it as soon as
+   * the turn ends. Either way the agent's task stays in progress. An idle
+   * agent gets it as a normal prompt.
+   */
+  "agents.steer": { params: { id: string; text: string; mode?: "now" | "next" }; result: AgentState };
+  /**
+   * Another agent takes over unfinished work: `from` is stopped at its current
+   * point, its work (including uncommitted changes) moves into `to`'s
+   * worktree, the task is reassigned, and `to` continues it with a summary of
+   * what was done. `to` must be running, idle and without changes of its own.
+   */
+  "agents.takeover": { params: { from: string; to: string; taskId?: string; note?: string }; result: TakeoverResult };
   /** Throws the agent's worktree back to a ref (default: the current base). */
   "agents.reset": { params: { id: string; ref?: string }; result: AgentState };
 
