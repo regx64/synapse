@@ -134,3 +134,4 @@ pre.detail { font-size: 11px; max-height: 10em; overflow: auto; margin: 0; backg
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 6px; }
 .mini { padding: 6px 8px; border-left: 3px solid; background: var(--vscode-textCodeBlock-background); min-width: 0; }
 .mini .row { justify-content: space-between; }
+.mini.stale { opacity: 0.55; }

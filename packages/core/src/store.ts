@@ -11,6 +11,7 @@ import type {
   Conflict,
   CodeComment,
   Decision,
+  TeamState,
   Task,
   CoreEvent,
   CoreEventType,
@@ -56,6 +57,7 @@ export class StateStore extends EventEmitter {
   private readonly messages = new Map<string, AgentMessage>();
   private readonly decisions = new Map<string, Decision>();
   private readonly comments = new Map<string, CodeComment>();
+  private team: TeamState = { enabled: false, person: "", remote: "origin", peers: [] };
   private audit: AuditEntry[] = [];
   private readonly backlog: CoreEvent[] = [];
   private readonly persistSoon = debounce(() => this.persistNow(), 200);
@@ -93,6 +95,7 @@ export class StateStore extends EventEmitter {
 
   snapshot(): CoreState {
     const state: Omit<CoreState, "alerts"> = {
+      team: this.team,
       version: CORE_API_VERSION,
       repoRoot: this.repoRoot,
       baseRef: this.baseRef,
@@ -287,6 +290,16 @@ export class StateStore extends EventEmitter {
     this.emitEvent("decision.updated", d);
     this.persistSoon();
     return d;
+  }
+
+  getTeam(): TeamState {
+    return this.team;
+  }
+
+  setTeam(t: TeamState): void {
+    const changed = JSON.stringify(t) !== JSON.stringify(this.team);
+    this.team = t;
+    if (changed) this.emitEvent("team.updated", t);
   }
 
   listComments(agentId?: string): CodeComment[] {

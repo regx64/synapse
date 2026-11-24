@@ -43,6 +43,7 @@ Agents
 Coordination
   status                             the collaboration board
   alerts                             only what needs you now (approvals, conflicts, errors, reviews…)
+  team [sync | leave]                teammates' agents via the git remote (team mode: synapse.config.json)
   owners [--agent ID]                files and symbols each agent owns
   conflicts [--check]                conflicts between agents
   approvals                          pending approvals
@@ -358,6 +359,20 @@ async function run(c: SynapseClient, cmd: string, sub: string | undefined, rest:
       const m = action === "release" ? await c.call("messages.release", { id }) : action === "reject" ? await c.call("messages.reject", { id }) : undefined;
       if (!m) throw new Error(`Unknown message action: ${action}`);
       out(m, () => `${m.id}: ${m.status}`);
+      return 0;
+    }
+    case "team": {
+      const t = sub === "sync" ? await c.call("team.sync") : sub === "leave" ? await c.call("team.leave") : await c.call("team.status");
+      out(t, () => {
+        if (!t.enabled) return 'team mode is off; enable it with "team": { "enabled": true } in synapse.config.json';
+        const lines = [`you are "${t.person}" on ${t.remote}${t.lastSync ? `, last sync ${t.lastSync}` : ""}${t.error ? `\n  error: ${t.error}` : ""}`];
+        if (!t.peers.length) lines.push("  no teammates yet");
+        for (const p of t.peers) {
+          lines.push(`  ${p.person}${p.stale ? " (not updated recently)" : ""}`);
+          for (const a of p.agents) lines.push(`    ${a.name.padEnd(24)} ${a.status.padEnd(10)} ${a.task ?? ""}${a.files.length ? `  ${a.files.length} file(s)` : ""}`);
+        }
+        return lines.join("\n");
+      });
       return 0;
     }
     case "alerts": {

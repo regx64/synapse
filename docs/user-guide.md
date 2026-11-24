@@ -247,6 +247,36 @@ shows files, owners, conflicts and test output. Merging fast-forwards your
 branch; it requires a clean checkout, an unmoved base, passing tests and no
 open conflicts (or `--force`).
 
+## Team mode
+
+Several people, each with their own Synapse and agents, on one repository.
+There is no Synapse server: your existing git remote carries it. Turn it on in
+`synapse.config.json` (or `.synapse/config.json` for just you):
+
+```json
+{ "team": { "enabled": true, "name": "alice", "remote": "origin", "intervalSec": 60 } }
+```
+
+Every minute, and shortly after your agents change something, Synapse pushes
+your agents' work in progress (their snapshot commits) and a small summary to
+`refs/synapse/team/<name>/` on the remote, and fetches your teammates'. Their
+agents then take part in conflict detection: if Bob's agent calls a function
+your agent is changing, you both see the signature-change warning before
+anyone merges. The **Team** section of the Overview shows teammates' agents,
+read-only.
+
+```bash
+synapse team sync
+```
+
+```bash
+synapse team leave
+```
+
+`leave` removes everything you published. Team mode pushes unfinished code to
+the remote, like pushing a branch, so it is off by default; anyone who can
+read the remote can read it. `name` defaults to your git `user.name`.
+
 ## Privacy
 
 Synapse collects no telemetry and sends nothing about you. Crash reports of

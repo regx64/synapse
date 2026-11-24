@@ -39,6 +39,9 @@ failing tests), `-32004` not found.
 | `agents.diff` | `{ id, path? }` | `AgentDiff`: files and hunks against the agent's base, from a fresh snapshot |
 | `comments.list` | `{ agentId? }` | `CodeComment[]` |
 | `comments.add` | `{ agentId, path, line, endLine?, text, action?: "note" \| "guidance" \| "task" }` | `CodeComment`. "guidance" also gives it to the agent; "task" creates a task for it |
+| `team.status` | – | `TeamState`: whether team mode is on, who you are, teammates and their agents |
+| `team.sync` | – | `TeamState`. Publishes your agents to the git remote and fetches teammates'; their agents then take part in conflict detection |
+| `team.leave` | – | `TeamState`. Removes everything you published |
 | `comments.resolve` | `{ id, status? }` | `CodeComment` |
 | `agents.takeover` | `{ from, to, taskId?, note? }` | `TakeoverResult`. `to` continues `from`'s unfinished work: `from` is stopped, its changes move into `to`'s worktree, the task is reassigned, `to` is briefed |
 | `agents.reset` | `{ id, ref? }` | `AgentState` (worktree reset to the base, changes discarded) |

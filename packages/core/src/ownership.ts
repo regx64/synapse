@@ -80,50 +80,8 @@ export class OwnershipService {
     // Keep the snapshot reachable so git gc does not collect it.
     await git(this.repoRoot, ["update-ref", `refs/synapse/snapshots/${agentId}`, snapshot]);
 
-    const [entries, numstat] = await Promise.all([diffRaw(wt.path, wt.baseCommit, snapshot), diffNumstat(wt.path, wt.baseCommit, snapshot)]);
-    const files: FileChange[] = [];
-    const details = new Map<string, FileDetail>();
-    // Files whose before and after blobs are the same as last time keep their analysis.
     const prevDetails = this.baseOf.get(agentId) === wt.baseCommit ? this.details.get(agentId) : undefined;
-    const prevFiles = new Map((previous?.files ?? []).map((f) => [f.path, f]));
-    const reusable = (e: (typeof entries)[number]) => {
-      const d = prevDetails?.get(e.path);
-      return d && d.oldOid === e.oldOid && d.newOid === e.newOid && prevFiles.has(e.path) ? d : undefined;
-    };
-    // All other contents in one git call (cached by blob id across refreshes).
-    const blobs = await readBlobs(wt.path, entries.filter((e) => !reusable(e)).flatMap((e) => [e.oldOid, e.newOid]).filter((o): o is string => !!o));
-    const text = (oid?: string) => {
-      const t = oid ? blobs.get(oid) : undefined;
-      return t === undefined || t.length > MAX_PARSE_BYTES || t.includes("\u0000") ? null : t;
-    };
-
-    for (const entry of entries) {
-      const stat = numstat.get(entry.path) ?? { added: 0, removed: 0 };
-      const same = reusable(entry);
-      if (same) {
-        files.push({ ...prevFiles.get(entry.path)!, status: entry.status, linesAdded: stat.added, linesRemoved: stat.removed });
-        details.set(entry.path, same);
-        continue;
-      }
-      const oldText = text(entry.oldOid);
-      const newText = text(entry.newOid);
-      const oldParsed = oldText !== null ? await parseSafe(entry.path, oldText) : null;
-      const newParsed = newText !== null ? await parseSafe(entry.path, newText) : null;
-      const parsed = (oldText === null || oldParsed !== null) && (newText === null || newParsed !== null);
-      const symbols = parsed ? diffSymbols(oldParsed, newParsed) : [];
-      files.push({ path: entry.path, status: entry.status, parsed, symbols, linesAdded: stat.added, linesRemoved: stat.removed });
-      details.set(entry.path, {
-        path: entry.path,
-        status: entry.status,
-        oldOid: entry.oldOid,
-        newOid: entry.newOid,
-        oldText,
-        newText,
-        oldParsed,
-        newParsed,
-        changedSymbols: new Set(symbols.filter((s) => s.change !== "removed").map((s) => s.name)),
-      });
-    }
+    const { files, details } = await analyzeSnapshot(wt.path, wt.baseCommit, snapshot, prevDetails && previous ? { details: prevDetails, files: previous.files } : undefined);
 
     this.details.set(agentId, details);
     this.baseOf.set(agentId, wt.baseCommit);
@@ -187,6 +145,63 @@ export class OwnershipService {
 }
 
 /** Symbol-level difference between two versions of a file. */
+/**
+ * What changed between `base` and `snapshot`, down to the symbol. `cwd` is any
+ * directory of the repository (an agent's worktree, or the main checkout for
+ * a teammate's fetched snapshot). With `previous`, files whose before and
+ * after blobs did not change keep their analysis.
+ */
+export async function analyzeSnapshot(
+  cwd: string,
+  base: string,
+  snapshot: string,
+  previous?: { details: Map<string, FileDetail>; files: FileChange[] },
+): Promise<{ files: FileChange[]; details: Map<string, FileDetail> }> {
+  const [entries, numstat] = await Promise.all([diffRaw(cwd, base, snapshot), diffNumstat(cwd, base, snapshot)]);
+  const files: FileChange[] = [];
+  const details = new Map<string, FileDetail>();
+  const prevFiles = new Map((previous?.files ?? []).map((f) => [f.path, f]));
+  const reusable = (e: (typeof entries)[number]) => {
+    const d = previous?.details.get(e.path);
+    return d && d.oldOid === e.oldOid && d.newOid === e.newOid && prevFiles.has(e.path) ? d : undefined;
+  };
+  // All other contents in one git call (cached by blob id across refreshes).
+  const blobs = await readBlobs(cwd, entries.filter((e) => !reusable(e)).flatMap((e) => [e.oldOid, e.newOid]).filter((o): o is string => !!o));
+  const text = (oid?: string) => {
+    const t = oid ? blobs.get(oid) : undefined;
+    return t === undefined || t.length > MAX_PARSE_BYTES || t.includes("\u0000") ? null : t;
+  };
+
+  for (const entry of entries) {
+    const stat = numstat.get(entry.path) ?? { added: 0, removed: 0 };
+    const same = reusable(entry);
+    if (same) {
+      files.push({ ...prevFiles.get(entry.path)!, status: entry.status, linesAdded: stat.added, linesRemoved: stat.removed });
+      details.set(entry.path, same);
+      continue;
+    }
+    const oldText = text(entry.oldOid);
+    const newText = text(entry.newOid);
+    const oldParsed = oldText !== null ? await parseSafe(entry.path, oldText) : null;
+    const newParsed = newText !== null ? await parseSafe(entry.path, newText) : null;
+    const parsed = (oldText === null || oldParsed !== null) && (newText === null || newParsed !== null);
+    const symbols = parsed ? diffSymbols(oldParsed, newParsed) : [];
+    files.push({ path: entry.path, status: entry.status, parsed, symbols, linesAdded: stat.added, linesRemoved: stat.removed });
+    details.set(entry.path, {
+      path: entry.path,
+      status: entry.status,
+      oldOid: entry.oldOid,
+      newOid: entry.newOid,
+      oldText,
+      newText,
+      oldParsed,
+      newParsed,
+      changedSymbols: new Set(symbols.filter((s) => s.change !== "removed").map((s) => s.name)),
+    });
+  }
+  return { files, details };
+}
+
 export function diffSymbols(oldFile: ParsedFile | null, newFile: ParsedFile | null): OwnedSymbol[] {
   const oldMap = new Map((oldFile?.symbols ?? []).map((s) => [s.name, s]));
   const newMap = new Map((newFile?.symbols ?? []).map((s) => [s.name, s]));

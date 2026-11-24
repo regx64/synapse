@@ -182,12 +182,10 @@
 
     const counts = { todo: 0, in_progress: 0, review: 0, done: 0, failed: 0 };
     for (const t of state.tasks) counts[t.status] = (counts[t.status] || 0) + 1;
-    root.append(
-      h("h2", {}, [`Agents (${state.agents.length})`]),
-      state.tasks.length
-        ? h("div", { class: "muted small" }, [`Tasks: ${counts.in_progress} in progress · ${counts.review} in review · ${counts.todo} to do · ${counts.done} done${counts.failed ? ` · ${counts.failed} failed` : ""}`])
-        : null,
-    );
+    root.append(h("h2", {}, [`Agents (${state.agents.length})`]));
+    if (state.tasks.length) {
+      root.append(h("div", { class: "muted small" }, [`Tasks: ${counts.in_progress} in progress · ${counts.review} in review · ${counts.todo} to do · ${counts.done} done${counts.failed ? ` · ${counts.failed} failed` : ""}`]));
+    }
     if (!state.agents.length) root.append(h("p", { class: "muted" }, ["No agents yet."]), button("Add agent", () => cmd("synapse.addAgent"), "primary"));
     const grid = h("div", { class: "grid" }, []);
     for (const a of state.agents) {
@@ -211,6 +209,37 @@
       );
     }
     root.append(grid);
+    renderTeam(state);
+  }
+
+  /** Teammates' agents (team mode): read-only, from the git remote. */
+  function renderTeam(state) {
+    const t = state.team;
+    if (!t || !t.enabled) return;
+    const ago = t.lastSync ? Math.max(0, Math.round((Date.now() - Date.parse(t.lastSync)) / 60000)) : undefined;
+    root.append(
+      h("h2", {}, [`Team (${t.peers.length})`]),
+      h("div", { class: "row" }, [
+        h("span", { class: "muted small" }, [`You are "${t.person}" on ${t.remote}${ago === undefined ? ", not synced yet" : `, synced ${ago ? `${ago} min ago` : "just now"}`}`]),
+        h("span", { class: "spacer" }),
+        button("Sync now", () => post("teamSync", {}), "link"),
+      ]),
+    );
+    if (t.error) root.append(h("div", { class: "error small" }, [t.error]));
+    if (!t.peers.length) root.append(h("p", { class: "muted small" }, ["No teammates have published yet."]));
+    for (const p of t.peers) {
+      const grid = h("div", { class: "grid" }, []);
+      for (const a of p.agents) {
+        grid.append(
+          h("div", { class: `mini${p.stale ? " stale" : ""}`, style: { borderLeftColor: a.color } }, [
+            h("div", { class: "row" }, [h("strong", {}, [a.name.replace(/ \([^)]*\)$/, "")]), h("span", { class: `status st-${a.status}` }, [a.status])]),
+            h("div", { class: "small clip" }, [a.task || h("span", { class: "muted" }, ["no task"])]),
+            h("div", { class: "muted small clip" }, [a.files.length ? a.files.map((f) => f.path).join(", ") : "no changes"]),
+          ]),
+        );
+      }
+      root.append(h("div", { class: "small" }, [h("strong", {}, [p.person]), p.stale ? h("span", { class: "muted" }, [" · not updated recently"]) : null]), p.agents.length ? grid : h("p", { class: "muted small" }, ["no agents"]));
+    }
   }
 
   function renderTasks(state) {

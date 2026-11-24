@@ -8,6 +8,7 @@ type BoardMessage =
   | { type: "command"; command: string; args?: unknown[] }
   | { type: "prompt"; id: string; text: string }
   | { type: "steer"; id: string; text: string; mode: "now" | "next" }
+  | { type: "teamSync" }
   | { type: "approve"; id: string; optionId: string }
   | { type: "openFile"; path: string; agentId?: string; line?: number }
   | { type: "createTask"; title: string; description?: string; agentId?: string; dependsOn?: string[]; scope?: string[]; autoStart?: boolean }
@@ -74,6 +75,11 @@ export class BoardProvider implements vscode.WebviewViewProvider, vscode.Disposa
         case "prompt":
           if (m.text.trim()) await this.conn.call("agents.prompt", { id: m.id, text: m.text });
           return;
+        case "teamSync": {
+          const t = await this.conn.call("team.sync");
+          if (t.error) void vscode.window.showWarningMessage(`Synapse team sync: ${t.error}`);
+          return;
+        }
         case "steer":
           if (m.text.trim()) await this.conn.call("agents.steer", { id: m.id, text: m.text, mode: m.mode });
           return;

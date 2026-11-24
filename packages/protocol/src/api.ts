@@ -501,6 +501,44 @@ export interface CodeComment {
 }
 
 // ---------------------------------------------------------------------------
+// Team mode: teammates' agents, shared through the git remote (no server)
+
+/** A teammate's agent, as their Synapse published it. Read-only here. */
+export interface TeamAgent {
+  /** "@<person>/<agent id>": how it appears in conflicts. */
+  id: string;
+  person: string;
+  agentId: string;
+  name: string;
+  color: string;
+  status: AgentStatus;
+  /** Title of the task it works on, if any. */
+  task?: string;
+  baseRef: string;
+  baseCommit: string;
+  snapshot?: string;
+  files: FileChange[];
+}
+
+export interface TeamPeer {
+  person: string;
+  updatedAt: string;
+  /** Not updated for a while (their Synapse is closed or offline). */
+  stale: boolean;
+  agents: TeamAgent[];
+}
+
+export interface TeamState {
+  enabled: boolean;
+  /** How this person appears to teammates. */
+  person: string;
+  remote: string;
+  lastSync?: string;
+  error?: string;
+  peers: TeamPeer[];
+}
+
+// ---------------------------------------------------------------------------
 // Alerts: only what needs the person
 
 export type AlertKind =
@@ -546,6 +584,7 @@ export interface CoreState {
   comments: CodeComment[];
   /** What needs the person now, most urgent first. */
   alerts: Alert[];
+  team: TeamState;
   /** The most recent audit entries. */
   audit: AuditEntry[];
   seq: number;
@@ -566,6 +605,7 @@ export type CoreEventType =
   | "message.updated"
   | "decision.updated"
   | "comment.updated"
+  | "team.updated"
   | "audit.added"
   | "core.log";
 
@@ -664,6 +704,11 @@ export interface CoreMethods {
     params: { agentId: string; path: string; line: number; endLine?: number; text: string; action?: CodeComment["action"] };
     result: CodeComment;
   };
+  "team.status": { params: void; result: TeamState };
+  /** Publishes this person's agents to the remote and fetches teammates'. Needs team mode enabled. */
+  "team.sync": { params: void; result: TeamState };
+  /** Removes everything this person published from the remote. */
+  "team.leave": { params: void; result: TeamState };
   "comments.resolve": { params: { id: string; status?: CodeComment["status"] }; result: CodeComment };
   "agents.takeover": { params: { from: string; to: string; taskId?: string; note?: string }; result: TakeoverResult };
   /** Throws the agent's worktree back to a ref (default: the current base). */
