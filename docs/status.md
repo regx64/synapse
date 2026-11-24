@@ -8,7 +8,7 @@ recorded here; "not verified" means written but not yet run end to end.
 | Item | State |
 | --- | --- |
 | Build repo: pinned upstream tag, patch-apply script, `product.json`, telemetry off, Open VSX | Done. Steps fetch → patch → prepare → branding check ran against Code - OSS 1.147.0 |
-| Development builds for Linux, macOS, Windows in CI | Done: the first full Code - OSS 1.147.0 builds succeeded on Linux x64, macOS arm64 and Windows x64 (2026-11-23, `dev-build.yml`); unsigned artifacts. Not yet launched and checked by hand |
+| Development builds for Linux, macOS, Windows in CI | Done: full Code - OSS 1.147.0 builds on Linux x64, macOS arm64 and Windows x64 (`dev-build.yml`); unsigned artifacts. Each build is then launched and checked (`build/smoke-app.mjs`): the workbench opens under the Synapse name, the built-in extension starts synapse-core, the board renders, no Copilot and no telemetry notice; a screenshot is kept |
 | Built-in extension skeleton: board panel, commands, status bar | Done (beyond skeleton: markers, diagnostics, review panel). Smoke-tested in VS Code 1.147.0 (`npm run test:smoke -w extensions/synapse-collab`): activates, starts the core with the editor's runtime, shows a two-agent conflict in the Problems panel, registers its commands, and applies an agent policy edited as JSON. The board (all five tabs) and the review panel (blocked, clean and merged reviews) were rendered in Chromium from real core state and checked by eye. |
 | synapse-core skeleton: separate process, local JSON-RPC API, state store, event stream | Done |
 | Rehearse one upstream sync and measure it | Automated in `upstream-sync.yml`; no newer upstream release exists yet to rehearse against |

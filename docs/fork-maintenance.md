@@ -169,6 +169,11 @@ with AI features off, nothing uses it.
 ## Build and distribution
 
 Phase 1: unsigned development builds on Linux x64, macOS arm64 and Windows x64
-(`.github/workflows/dev-build.yml`). Before the public beta (phase 4): macOS
+(`.github/workflows/dev-build.yml`). After each build, `build/smoke-app.mjs`
+launches the app (under Xvfb on Linux) with Playwright's Electron driver and
+checks it as a product: Synapse name in the window title, synapse-core started
+by the built-in extension for an open repository, the board rendered, no
+Copilot, no telemetry notice, no "VS Code" in UI messages. The screenshot is
+uploaded with the build. Before the public beta (phase 4): macOS
 signing and notarization (arm64 and x64), Windows signing, Linux packages, an
 update server.

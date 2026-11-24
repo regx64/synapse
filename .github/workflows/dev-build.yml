@@ -56,13 +56,29 @@ jobs:
           node-version: ${{ steps.pin.outputs.node }}
       - name: Linux build dependencies
         if: matrix.platform == 'linux'
-        run: sudo apt-get update && sudo apt-get install -y libkrb5-dev libx11-dev libxkbfile-dev libsecret-1-dev
+        run: sudo apt-get update && sudo apt-get install -y libkrb5-dev libx11-dev libxkbfile-dev libsecret-1-dev xvfb
       - run: npm ci && npm run build
       - run: node build/build.mjs --platform ${{ matrix.platform }} --arch ${{ matrix.arch }}
         env:
           # Upstream's install downloads prebuilt binaries (e.g. ripgrep) through the GitHub API;
           # unauthenticated requests from shared runners hit the rate limit (403).
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Launch the built app and check it (smoke test)
+        shell: bash
+        run: |
+          app="$SYNAPSE_VSCODE_DIR/../VSCode-${{ matrix.platform }}-${{ matrix.arch }}"
+          if [ "${{ matrix.platform }}" = linux ]; then
+            xvfb-run -a --server-args="-screen 0 1440x900x24" node build/smoke-app.mjs "$app" --screenshot smoke-${{ matrix.platform }}.png
+          else
+            node build/smoke-app.mjs "$app" --screenshot smoke-${{ matrix.platform }}.png
+          fi
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: smoke-${{ matrix.platform }}-${{ matrix.arch }}
+          path: smoke-${{ matrix.platform }}.png
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Move the build into the workspace (artifact paths cannot use ..)
         shell: bash
         run: mv "$SYNAPSE_VSCODE_DIR/../VSCode-${{ matrix.platform }}-${{ matrix.arch }}" .
