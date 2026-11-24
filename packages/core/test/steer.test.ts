@@ -125,8 +125,9 @@ test("another agent takes over unfinished work: changes, task and context move w
     assert.ok(s.turn!.prompt.includes(`You are taking over task ${t.id} from Alpha`));
     assert.match(s.turn!.prompt, /Note from the person: Keep the 10% rate/);
     assert.match(s.turn!.prompt, /Their plan:\n\s+\[pending\] Add tax module/);
-    assert.equal(core.store.getTask(t.id)!.status, "review");
-    assert.equal(core.store.getTask(t.id)!.agentId, "beta");
+    // The task moves to review just after the turn ends (ownership is refreshed first).
+    const reviewed = await waitFor(() => (core.store.getTask(t.id)!.status === "review" ? core.store.getTask(t.id) : undefined), "task in review");
+    assert.equal(reviewed!.agentId, "beta");
 
     await core.refreshOwnership();
     assert.deepEqual(core.store.getOwnership("beta")!.files.map((f) => f.path).sort(), ["src/pricing.ts", "src/tax.ts"]);
