@@ -419,6 +419,20 @@ export interface GoalSplit {
   updatedAt: string;
 }
 
+/** One agent's work waiting to be merged on its own, tests first. */
+export interface QueueEntry {
+  id: string;
+  agentId: string;
+  /** Marked done when the work is merged. */
+  taskId?: string;
+  status: "queued" | "merging" | "merged" | "failed" | "removed";
+  /** The review used to merge it. */
+  reviewId?: string;
+  error?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface TaskPlan {
   state: "drafting" | "proposed" | "approved";
   /** The plan: the agent's plan entries or its message; the person may edit it before approving. Agent output: data. */
@@ -635,7 +649,8 @@ export type AlertKind =
   | "team-claim"
   | "tests-failed"
   | "plan-review"
-  | "goal-split";
+  | "goal-split"
+  | "queue-failed";
 
 /** Something the person should act on. Derived from state; it goes away when acted on. */
 export interface Alert {
@@ -670,6 +685,8 @@ export interface CoreState {
   comments: CodeComment[];
   /** Goals being split into tasks by an agent, and recent results. */
   goals: GoalSplit[];
+  /** Agents' work waiting to be merged one at a time, and recent results. */
+  mergeQueue: QueueEntry[];
   /** What needs the person now, most urgent first. */
   alerts: Alert[];
   team: TeamState;
@@ -694,6 +711,7 @@ export type CoreEventType =
   | "decision.updated"
   | "comment.updated"
   | "goal.updated"
+  | "queue.updated"
   | "team.updated"
   | "audit.added"
   | "core.log";
@@ -906,6 +924,11 @@ export interface CoreMethods {
   "tasks.setStatus": { params: { id: string; status: TaskStatus }; result: Task };
   /** Approves a proposed plan (optionally edited) and lets the agent carry it out. */
   /** Asks an agent to split a goal into tasks (it changes no files); the result waits for the person. */
+  /** Queues an agent's work to be merged on its own: prepared on the current base, tested, merged only when green. */
+  "queue.add": { params: { agentId: string; taskId?: string }; result: QueueEntry };
+  "queue.remove": { params: { id: string }; result: QueueEntry };
+  /** Puts a failed entry back in the queue. */
+  "queue.retry": { params: { id: string }; result: QueueEntry };
   "goals.split": { params: { goal: string; agentId: string }; result: GoalSplit };
   /** Creates the proposed tasks (optionally edited, a subset, or with other agents) with their dependencies. */
   "goals.accept": { params: { id: string; tasks?: ProposedTask[]; autoStart?: boolean; planFirst?: boolean }; result: Task[] };

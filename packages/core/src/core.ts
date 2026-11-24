@@ -24,6 +24,7 @@ import { TranscriptStore } from "./transcripts.js";
 import { tellAboutConflict } from "./conflict-help.js";
 import { AgentTestService } from "./agent-tests.js";
 import { GoalService } from "./goals.js";
+import { MergeQueue } from "./merge-queue.js";
 import { debounce, KeyedSerializer } from "./util.js";
 import { WorktreeManager } from "./worktrees.js";
 
@@ -63,6 +64,7 @@ export class SynapseCore {
   readonly transcripts: TranscriptStore;
   readonly agentTests: AgentTestService;
   readonly goals: GoalService;
+  readonly mergeQueue: MergeQueue;
   readonly team: TeamService;
   readonly collab: CollabService;
   /** Where the API is served; set by serve(). Agents' MCP servers connect back here. */
@@ -99,6 +101,7 @@ export class SynapseCore {
           .catch((e: Error) => this.log(`task update failed: ${e.message}`))
           .then(() => this.goals.onTurnEnd(id, stopReason, error))
           .then(() => this.agentTests.onTurnEnd(id, stopReason))
+          .then(() => this.mergeQueue.kick())
           .catch((e: Error) => this.log(`tests for ${id} failed to run: ${e.message}`));
       },
       mcpServerFor: (id) => this.mcpServerFor(id),
@@ -123,6 +126,7 @@ export class SynapseCore {
       resetAgent: (id, ref) => this.agents.reset(id, ref),
       log: this.log,
     });
+    this.mergeQueue = new MergeQueue({ store: this.store, reviews: this.reviews, collab: this.collab, log: this.log });
   }
 
   static async open(opts: CoreOptions): Promise<SynapseCore> {
@@ -358,6 +362,9 @@ export class SynapseCore {
       },
       "tasks.start": (p) => this.collab.startTask(req(p, "id")),
       "tasks.setStatus": (p) => this.collab.setStatus(req(p, "id"), req(p, "status")),
+      "queue.add": (p) => this.mergeQueue.add(req(p, "agentId"), p.taskId),
+      "queue.remove": (p) => this.mergeQueue.remove(req(p, "id")),
+      "queue.retry": (p) => this.mergeQueue.retry(req(p, "id")),
       "goals.split": (p) => this.goals.split(req(p, "goal"), req(p, "agentId")),
       "goals.accept": (p) => this.goals.accept(req(p, "id"), p.tasks, { autoStart: p.autoStart, planFirst: p.planFirst }),
       "goals.discard": (p) => this.goals.discard(req(p, "id")),

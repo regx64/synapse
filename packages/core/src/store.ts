@@ -12,6 +12,7 @@ import type {
   CodeComment,
   Decision,
   GoalSplit,
+  QueueEntry,
   TeamState,
   Task,
   CoreEvent,
@@ -35,6 +36,7 @@ interface PersistedState {
   decisions?: Decision[];
   comments?: CodeComment[];
   goals?: GoalSplit[];
+  mergeQueue?: QueueEntry[];
   audit?: AuditEntry[];
 }
 
@@ -59,6 +61,7 @@ export class StateStore extends EventEmitter {
   private readonly messages = new Map<string, AgentMessage>();
   private readonly decisions = new Map<string, Decision>();
   private readonly goals = new Map<string, GoalSplit>();
+  private readonly queue = new Map<string, QueueEntry>();
   private readonly comments = new Map<string, CodeComment>();
   private team: TeamState = { enabled: false, person: "", role: "editor", remote: "origin", peers: [], claimsOnMe: [] };
   private audit: AuditEntry[] = [];
@@ -112,6 +115,7 @@ export class StateStore extends EventEmitter {
       decisions: this.listDecisions(),
       comments: this.listComments(),
       goals: this.listGoals(),
+      mergeQueue: this.listQueue(),
       audit: this.audit.slice(-200),
       seq: this.seq,
     };
@@ -296,6 +300,24 @@ export class StateStore extends EventEmitter {
     return d;
   }
 
+  listQueue(): QueueEntry[] {
+    return [...this.queue.values()];
+  }
+
+  getQueueEntry(id: string): QueueEntry | undefined {
+    return this.queue.get(id);
+  }
+
+  putQueueEntry(e: QueueEntry): QueueEntry {
+    e.updatedAt = nowIso();
+    this.queue.set(e.id, e);
+    const closed = [...this.queue.values()].filter((x) => x.status === "merged" || x.status === "removed");
+    for (const old of closed.slice(0, Math.max(0, closed.length - 20))) this.queue.delete(old.id);
+    this.emitEvent("queue.updated", e);
+    this.persistSoon();
+    return e;
+  }
+
   listGoals(): GoalSplit[] {
     return [...this.goals.values()];
   }
@@ -377,6 +399,7 @@ export class StateStore extends EventEmitter {
     for (const m of data.messages ?? []) this.messages.set(m.id, m);
     for (const d of data.decisions ?? []) this.decisions.set(d.id, d);
     for (const c of data.comments ?? []) this.comments.set(c.id, c);
+    for (const e of data.mergeQueue ?? []) this.queue.set(e.id, e.status === "merging" ? { ...e, status: "queued" } : e);
     for (const g of data.goals ?? []) this.goals.set(g.id, g.status === "splitting" ? { ...g, status: "failed", error: "Synapse restarted while the agent was splitting the goal" } : g);
     this.audit = data.audit ?? [];
   }
@@ -393,6 +416,7 @@ export class StateStore extends EventEmitter {
       decisions: this.listDecisions(),
       comments: this.listComments(),
       goals: this.listGoals(),
+      mergeQueue: this.listQueue(),
       audit: this.audit.slice(-500),
     };
     fs.mkdirSync(path.dirname(this.stateFile), { recursive: true });

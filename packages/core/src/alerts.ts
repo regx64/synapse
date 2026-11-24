@@ -95,6 +95,10 @@ export function computeAlerts(s: Omit<CoreState, "alerts">, now = Date.now()): A
       at: last.at,
     });
   }
+  for (const e of s.mergeQueue ?? []) {
+    if (e.status !== "failed") continue;
+    out.push({ id: `queue-failed:${e.id}`, kind: "queue-failed", level: "action", title: `${name(e.agentId)}'s work was not merged`, detail: e.error, agentId: e.agentId, ref: e.id, at: e.updatedAt });
+  }
   for (const g of s.goals ?? []) {
     if (g.status !== "proposed" && g.status !== "failed") continue;
     out.push({

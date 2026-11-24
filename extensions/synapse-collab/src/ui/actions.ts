@@ -32,7 +32,10 @@ export type ViewMessage =
   | { type: "revisePlan"; id: string; feedback: string }
   | { type: "splitGoal"; goal: string; agentId: string }
   | { type: "acceptGoal"; id: string; tasks?: import("@synapse/client").ProposedTask[]; autoStart?: boolean; planFirst?: boolean }
-  | { type: "discardGoal"; id: string };
+  | { type: "discardGoal"; id: string }
+  | { type: "queueAdd"; agentId: string; taskId?: string }
+  | { type: "queueRemove"; id: string }
+  | { type: "queueRetry"; id: string };
 
 /** Commands a webview may run through `{ type: "command" }`. */
 const ALLOWED_COMMANDS = new Set([
@@ -168,6 +171,15 @@ export async function handleViewMessage(m: ViewMessage, conn: CoreConnection, se
       }
       case "discardGoal":
         await conn.call("goals.discard", { id: m.id });
+        return;
+      case "queueAdd":
+        await conn.call("queue.add", { agentId: m.agentId, taskId: m.taskId });
+        return;
+      case "queueRemove":
+        await conn.call("queue.remove", { id: m.id });
+        return;
+      case "queueRetry":
+        await conn.call("queue.retry", { id: m.id });
         return;
       case "dismissChecklist":
         await context.workspaceState.update("synapse.checklistDismissed", true);

@@ -89,6 +89,9 @@
     }
     page.append(agents);
 
+    const queue = queueSection(state);
+    if (queue) page.append(queue);
+
     const lower = h("div", { class: "lower" }, []);
     lower.append(tasksSummary(state));
     const side = h("div", { class: "col gap-lg" }, []);
@@ -113,6 +116,7 @@
     "tests-failed": ["alert", "error"],
     "plan-review": ["task", "needs"],
     "goal-split": ["list", "info"],
+    "queue-failed": ["merge", "error"],
   };
 
   /** The alert's title in the person's language, built from state; the core's English title if the item is gone. */
@@ -153,6 +157,10 @@
         const n = Number((a.title.match(/^\d+/) || ["0"])[0]);
         return n ? t("alert.risky", n) : a.title;
       }
+      case "queue-failed": {
+        const e = (state.mergeQueue || []).find((y) => y.id === a.ref);
+        return e ? t("alert.queueFailed", nameOf(state, e.agentId)) : a.title;
+      }
       case "goal-split": {
         const g = (state.goals || []).find((y) => y.id === a.ref);
         if (!g) return a.title;
@@ -189,6 +197,35 @@
         agent ? h("div", { class: "row tiny muted" }, [dot(agent.color, "sm"), agent.name, a.at ? ` · ${ago(a.at)}` : ""]) : null,
       ]),
       h("div", { class: "row wrap actions" }, alertActions(a, state, ap)),
+    ]);
+  }
+
+  /** The merge queue: what waits, what is merging, what failed and why. */
+  function queueSection(state) {
+    const entries = (state.mergeQueue || []).filter((e) => e.status !== "removed").sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    const shown = entries.filter((e) => e.status !== "merged").concat(entries.filter((e) => e.status === "merged").slice(-3));
+    if (!shown.length) return null;
+    return h("section", { class: "col", "aria-labelledby": "h-queue" }, [
+      h("h2", { id: "h-queue" }, [t("queue.title")]),
+      h(
+        "div",
+        { class: "card rows" },
+        shown.map((e) => {
+          const task = e.taskId ? state.tasks.find((x) => x.id === e.taskId) : undefined;
+          const cls = e.status === "merged" ? "review" : e.status === "failed" ? "error" : e.status === "merging" ? "needs" : "todo";
+          return h("div", { class: "col tight trow" }, [
+            h("div", { class: "row" }, [
+              h("span", { class: `pill ${cls}` }, [t(`queue.${e.status}`)]),
+              dot(colorOf(state, e.agentId), "sm"),
+              h("span", { class: "strong" }, [nameOf(state, e.agentId)]),
+              h("span", { class: "ell grow fg2" }, [task ? task.title : ""]),
+              e.status === "failed" ? button(t("queue.retry"), () => post("queueRetry", { id: e.id }), "sm") : null,
+              e.status === "queued" || e.status === "failed" ? button(t("queue.remove"), () => post("queueRemove", { id: e.id }), "ghost sm") : null,
+            ]),
+            e.status === "failed" && e.error ? h("pre", { class: "code-block clamp small" }, [e.error]) : null,
+          ]);
+        }),
+      ),
     ]);
   }
 
@@ -236,9 +273,16 @@
       case "stale-decision":
         return [button(t("needs.stillHolds"), () => post("decisionRepin", { id: a.ref }), "primary"), button(t("needs.details"), () => go("decisions"), "ghost")];
       case "task-review":
-        return [button(t("review.merge"), () => cmd("synapse.prepareReview"), "primary"), a.agentId ? button(t("needs.seeChanges"), () => post("select", { id: a.agentId, show: "diff" })) : null, button(t("needs.markDone"), () => post("taskAction", { id: a.ref, action: "done" }), "ghost")];
+        return [
+          a.agentId ? button(t("queue.add"), () => post("queueAdd", { agentId: a.agentId, taskId: a.ref }), "primary", { title: t("queue.addHint") }) : null,
+          button(t("review.merge"), () => cmd("synapse.prepareReview")),
+          a.agentId ? button(t("needs.seeChanges"), () => post("select", { id: a.agentId, show: "diff" })) : null,
+          button(t("needs.markDone"), () => post("taskAction", { id: a.ref, action: "done" }), "ghost"),
+        ];
       case "risky-command":
         return [button(t("needs.details"), () => go("audit"))];
+      case "queue-failed":
+        return [button(t("queue.retry"), () => post("queueRetry", { id: a.ref }), "primary"), a.agentId ? button(t("needs.seeChanges"), () => post("select", { id: a.agentId, show: "diff" })) : null, button(t("queue.remove"), () => post("queueRemove", { id: a.ref }), "ghost")];
       case "goal-split":
         return [button(t("goal.review"), () => go("tasks"), "primary"), button(t("goal.discard"), () => post("discardGoal", { id: a.ref }), "ghost")];
       case "plan-review":
@@ -467,7 +511,10 @@
     for (const x of [...state.tasks].sort((a, b) => order[a.status] - order[b.status] || a.id.localeCompare(b.id, undefined, { numeric: true }))) {
       const actions = [];
       if ((x.status === "todo" || x.status === "failed" || x.status === "review") && !x.blocked && x.agentId) actions.push(button(x.status === "todo" ? t("task.start") : t("task.runAgain"), () => post("taskAction", { id: x.id, action: "start" }), x.status === "todo" ? "primary sm" : "sm"));
-      if (x.status === "review") actions.push(button(t("task.done"), () => post("taskAction", { id: x.id, action: "done" }), "primary sm"), button(t("task.failed"), () => post("taskAction", { id: x.id, action: "failed" }), "sm"));
+      if (x.status === "review" && !(x.plan && x.plan.state === "proposed")) {
+        if (x.agentId && !(state.mergeQueue || []).some((e) => e.agentId === x.agentId && (e.status === "queued" || e.status === "merging"))) actions.push(button(t("queue.add"), () => post("queueAdd", { agentId: x.agentId, taskId: x.id }), "primary sm", { title: t("queue.addHint") }));
+        actions.push(button(t("task.done"), () => post("taskAction", { id: x.id, action: "done" }), "sm"), button(t("task.failed"), () => post("taskAction", { id: x.id, action: "failed" }), "sm"));
+      }
       if (x.status === "in_progress") actions.push(button(t("task.markFailed"), () => post("taskAction", { id: x.id, action: "failed" }), "sm"));
       if (x.status === "done" || x.status === "failed") actions.push(button(t("task.reopen"), () => post("taskAction", { id: x.id, action: "todo" }), "sm"));
       if (x.status !== "in_progress") actions.push(button(t("task.remove"), () => post("taskAction", { id: x.id, action: "remove" }), "ghost sm"));

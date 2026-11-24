@@ -82,6 +82,9 @@ window.SYNAPSE_STRINGS = {
     "goal.splitting": "{0} is splitting the goal…", "goal.failed": "Could not split it: {0}", "goal.discard": "Discard", "goal.keep": "Keep this task", "goal.after": "after {0}",
     "goal.proposed": "{0} proposes {1} tasks. Untick what you don't want, edit titles and agents, then accept.", "goal.accept": "Create tasks", "goal.review": "Review tasks",
     "alert.goalProposed": "{0} split a goal into {1} tasks", "alert.goalFailed": "{0} could not split a goal",
+    "queue.title": "Merge queue", "queue.queued": "Queued", "queue.merging": "Merging", "queue.merged": "Merged", "queue.failed": "Not merged", "queue.removed": "Removed",
+    "queue.retry": "Retry", "queue.remove": "Remove", "queue.add": "Queue merge", "queue.addHint": "Merge this agent's work on its own when its tests pass, after what is already queued",
+    "alert.queueFailed": "{0}'s work was not merged",
     "stop.cancelled": "Turn stopped", "stop.refusal": "The agent declined", "stop.max_tokens": "Stopped: output limit reached", "stop.max_turn_requests": "Stopped: step limit reached",
   },
   ko: {
@@ -164,6 +167,9 @@ window.SYNAPSE_STRINGS = {
     "goal.splitting": "{0}이(가) 목표를 나누는 중…", "goal.failed": "나누지 못했습니다: {0}", "goal.discard": "버리기", "goal.keep": "이 작업 유지", "goal.after": "{0} 다음",
     "goal.proposed": "{0}이(가) 작업 {1}개를 제안했습니다. 원하지 않는 것은 체크를 풀고, 제목과 담당자를 고친 뒤 만드세요.", "goal.accept": "작업 만들기", "goal.review": "작업 보기",
     "alert.goalProposed": "{0}이(가) 목표를 작업 {1}개로 나눴습니다", "alert.goalFailed": "{0}이(가) 목표를 나누지 못했습니다",
+    "queue.title": "병합 대기열", "queue.queued": "대기", "queue.merging": "병합 중", "queue.merged": "병합됨", "queue.failed": "병합 안 됨", "queue.removed": "빠짐",
+    "queue.retry": "다시 시도", "queue.remove": "빼기", "queue.add": "병합 대기열에 넣기", "queue.addHint": "먼저 들어간 작업 다음에, 테스트가 통과하면 이 에이전트의 작업만 병합합니다",
+    "alert.queueFailed": "{0}의 작업이 병합되지 않았습니다",
     "stop.cancelled": "턴을 중지했습니다", "stop.refusal": "에이전트가 거절했습니다", "stop.max_tokens": "중지: 출력 한도 도달", "stop.max_turn_requests": "중지: 단계 한도 도달",
   },
 };

@@ -59,6 +59,9 @@ Tasks (the person splits a goal and assigns subtasks)
   task add <title> [--agent ID] [--after t-1,t-2] [--scope GLOB,..] [--auto] [--plan-first] [--description TEXT]
   task start|done|fail|review|todo|rm <task-id>
   task plan <task-id> [approve [--plan TEXT] | revise <feedback>]
+  queue                              the merge queue
+  queue add <agent-id> [--task ID]   merge that agent's work on its own when its tests pass
+  queue remove|retry <entry-id>
   goal split <goal> --agent ID       an agent proposes tasks for a goal (changes no files)
   goal show|accept|discard <goal-id> [--auto] [--plan-first]
 
@@ -307,6 +310,23 @@ async function run(c: SynapseClient, cmd: string, sub: string | undefined, rest:
       const r = await c.call("review.prepare", { agents, runTests: !v["no-tests"] });
       out(r, () => renderReview(r));
       return r.status === "ready" ? 0 : 2;
+    }
+    case "queue": {
+      if (!sub) {
+        const q = (await c.call("state.get")).mergeQueue.filter((e) => e.status !== "removed");
+        out(q, () => (q.length ? q.map((e) => `${e.id}  ${e.status.padEnd(8)} ${e.agentId}${e.taskId ? ` (${e.taskId})` : ""}${e.error ? `\n    ${e.error.split("\n")[0]}` : ""}`).join("\n") : "the merge queue is empty"));
+        return 0;
+      }
+      if (sub === "add") {
+        const e = await c.call("queue.add", { agentId: need(rest[0], "agent id"), taskId: v.task as string | undefined });
+        out(e, () => `${e.id}: ${e.agentId}'s work is queued`);
+        return 0;
+      }
+      const id = need(rest[0], "queue entry id");
+      const e = sub === "remove" ? await c.call("queue.remove", { id }) : sub === "retry" ? await c.call("queue.retry", { id }) : undefined;
+      if (!e) throw new Error(`Unknown queue action: ${sub}`);
+      out(e, () => `${e.id}: ${e.status}`);
+      return 0;
     }
     case "goal": {
       const action = need(sub, "goal action");
