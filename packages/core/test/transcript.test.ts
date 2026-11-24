@@ -42,15 +42,22 @@ test("an agent's conversation is kept: prompts, messages, tool calls, guidance a
     assert.equal(tool.status, "completed");
     assert.deepEqual(t.map((e) => e.n), t.map((_, i) => i + 1), "entries are numbered in order");
 
+    // A task's prompt is linked to the task.
+    const task = await h["tasks.create"]({ title: "Add tests", agentId: "alpha" });
+    await h["tasks.start"]({ id: task.id });
+    await idleAfterTurn(core, "alpha");
+    const withTask = await h["agents.transcript"]({ id: "alpha" });
+    assert.equal(withTask.filter((e) => e.kind === "prompt" && !e.followup).at(-1)!.taskId, task.id);
+
     // `from` returns the newest entries again, so a growing message refreshes.
-    const tail = await h["agents.transcript"]({ id: "alpha", from: t[t.length - 1]!.n });
-    assert.deepEqual(tail.map((e) => e.n), [t[t.length - 1]!.n]);
+    const tail = await h["agents.transcript"]({ id: "alpha", from: withTask[withTask.length - 1]!.n });
+    assert.deepEqual(tail.map((e) => e.n), [withTask[withTask.length - 1]!.n]);
 
     await core.close();
     // It survives a restart.
     assert.ok(fs.existsSync(path.join(repo, ".synapse", "transcripts", "alpha.json")));
     core = await SynapseCore.open({ workspace: repo });
-    assert.deepEqual((await core.handlers()["agents.transcript"]({ id: "alpha" })).map((e) => e.kind), kinds);
+    assert.deepEqual((await core.handlers()["agents.transcript"]({ id: "alpha" })).map((e) => e.kind), withTask.map((e) => e.kind));
 
     // Removing the agent forgets it.
     await core.agents.remove("alpha");

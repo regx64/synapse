@@ -145,3 +145,24 @@ test("a teammate's agent's work can be continued; its owner is told, and viewers
     await C.close();
   }
 });
+
+test("team mode can be turned on from the UI; it is written to the local config", async () => {
+  const repo = makeRepo(SHOP);
+  const remote = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "synapse-team-")), "remote.git");
+  gitOut(path.dirname(remote), "clone", "-q", "--bare", repo, remote);
+  gitOut(repo, "remote", "add", "origin", remote);
+  const core = await SynapseCore.open({ workspace: repo, ephemeral: true });
+  try {
+    const h = core.handlers();
+    assert.equal((await h["team.status"]()).enabled, false);
+    const s = await h["team.enable"]({ name: "Dana" });
+    assert.equal(s.enabled, true);
+    assert.equal(s.person, "dana");
+    assert.equal(s.error, undefined);
+    const local = JSON.parse(fs.readFileSync(path.join(repo, ".synapse", "config.json"), "utf8"));
+    assert.deepEqual(local.team, { enabled: true, name: "Dana" });
+    assert.match(gitOut(repo, "ls-remote", "--refs", remote, "refs/synapse/team/*"), /refs\/synapse\/team\/dana\/lane/);
+  } finally {
+    await core.close();
+  }
+});

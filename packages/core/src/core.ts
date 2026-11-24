@@ -170,6 +170,26 @@ export class SynapseCore {
     this.config = await loadConfig(this.repoRoot);
   }
 
+  /** Team mode on for this clone: `.synapse/config.json` gets `team.enabled` (and the name and remote, when given). */
+  private async enableTeam(name?: string, remote?: string): Promise<ReturnType<TeamService["status"]>> {
+    const file = path.join(this.repoRoot, ".synapse", "config.json");
+    let local: Record<string, unknown> = {};
+    try {
+      local = JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>;
+    } catch {
+      /* no local config yet */
+    }
+    const team: Record<string, unknown> = { ...((local.team as Record<string, unknown> | undefined) ?? {}), enabled: true };
+    if (name?.trim()) team.name = name.trim();
+    if (remote?.trim()) team.remote = remote.trim();
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify({ ...local, team }, null, 2) + "\n");
+    await this.reloadConfig();
+    this.team.stop();
+    await this.team.start();
+    return this.team.sync();
+  }
+
   scheduleRefresh(agentId: string): void {
     if (this.closed) return;
     let r = this.refreshers.get(agentId);
@@ -248,6 +268,7 @@ export class SynapseCore {
       "comments.add": (p) => this.comments.add(p),
       "team.status": () => this.team.status(),
       "team.sync": () => this.team.sync(),
+      "team.enable": (p) => this.enableTeam(p?.name, p?.remote),
       "team.leave": () => this.team.leave(),
       "team.adopt": async (p) => {
         if (this.team.role() !== "editor") throw new RpcError(ErrorCodes.Unauthorized, "Viewers in team mode cannot continue teammates' work");

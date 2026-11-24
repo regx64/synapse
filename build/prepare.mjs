@@ -31,7 +31,7 @@ if (!fs.existsSync(path.join(extSrc, "dist", "extension.cjs")) || !fs.existsSync
 }
 fs.rmSync(extDst, { recursive: true, force: true });
 fs.mkdirSync(extDst, { recursive: true });
-for (const entry of ["dist", "media", ".vscodeignore", "README.md"]) {
+for (const entry of ["dist", "media", "themes", "l10n", "package.nls.json", "package.nls.ko.json", ".vscodeignore", "README.md"]) {
   const from = path.join(extSrc, entry);
   if (fs.existsSync(from)) fs.cpSync(from, path.join(extDst, entry), { recursive: true, filter: (f) => !f.endsWith(".map") });
 }

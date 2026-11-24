@@ -17,7 +17,7 @@ import { JsonRpcPeer } from "@synapse/protocol";
  * Steps:
  *   {"say": "text"}                       agent message
  *   {"think": "text"}                     agent thought
- *   {"plan": ["a", "b"]}                  plan entries
+ *   {"plan": ["a", "b"]}                  plan entries (or {"content": "a", "status": "completed"})
  *   {"write": {"path": "rel", "content": "..."}}
  *   {"edit": {"path": "rel", "find": "x", "replace": "y"}}
  *   {"ask": {"title": "Run npm test?", "kind": "execute"}}   stops the turn if rejected
@@ -29,7 +29,7 @@ import { JsonRpcPeer } from "@synapse/protocol";
 type Step =
   | { say: string }
   | { think: string }
-  | { plan: string[] }
+  | { plan: (string | { content: string; status?: string })[] }
   | { write: { path: string; content: string } }
   | { edit: { path: string; find: string; replace: string } }
   | { ask: { title: string; kind?: string } }
@@ -176,7 +176,7 @@ async function run(sessionId: string, cwd: string, step: Step, mcpServers: McpSe
   } else if ("think" in step) {
     update(sessionId, { sessionUpdate: "agent_thought_chunk", content: { type: "text", text: step.think } });
   } else if ("plan" in step) {
-    update(sessionId, { sessionUpdate: "plan", entries: step.plan.map((content) => ({ content, status: "pending", priority: "medium" })) });
+    update(sessionId, { sessionUpdate: "plan", entries: step.plan.map((p) => (typeof p === "string" ? { content: p, status: "pending", priority: "medium" } : { content: p.content, status: p.status ?? "pending", priority: "medium" })) });
   } else if ("sleep" in step) {
     // Like a real agent, stop waiting as soon as the turn is cancelled.
     const until = Date.now() + step.sleep;

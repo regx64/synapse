@@ -2,12 +2,17 @@ import { execFile } from "node:child_process";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import type { AgentState } from "@synapse/client";
-import { BoardProvider } from "./board.js";
 import { CoreConnection } from "./connection.js";
 import { LiveDiffPanel } from "./livediff.js";
 import { Markers } from "./markers.js";
 import { POLICY_SCHEME, PolicyFileSystem } from "./policy.js";
 import { REVIEW_SCHEME, ReviewContentProvider, ReviewPanel } from "./review.js";
+import { attention } from "./attention.js";
+import { l } from "./ui/l10n.js";
+import { Selection } from "./ui/selection.js";
+import { AgentsView } from "./views/agents.js";
+import { DetailView } from "./views/detail.js";
+import { HomePanel } from "./views/home.js";
 
 /**
  * Synapse's built-in extension. It is a client of synapse-core and nothing
@@ -21,66 +26,39 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   if (!repoRoot) return;
 
   const conn = new CoreConnection(repoRoot, context);
-  const board = new BoardProvider(conn, context.extensionUri);
+  const selection = new Selection(conn, context.workspaceState);
+  const deps = { conn, selection, context };
+  const agentsView = new AgentsView(deps);
+  const detailView = new DetailView(deps);
   const markers = new Markers(conn);
-  const status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 50);
-  status.command = "workbench.view.extension.synapse";
   context.subscriptions.push(
     conn,
-    board,
+    selection,
+    agentsView,
+    detailView,
     markers,
-    status,
-    vscode.window.registerWebviewViewProvider(BoardProvider.viewId, board, { webviewOptions: { retainContextWhenHidden: true } }),
+    vscode.window.registerWebviewViewProvider(AgentsView.id, agentsView, { webviewOptions: { retainContextWhenHidden: true } }),
+    vscode.window.registerWebviewViewProvider(DetailView.id, detailView, { webviewOptions: { retainContextWhenHidden: true } }),
+    vscode.window.registerWebviewPanelSerializer(HomePanel.viewType, {
+      deserializeWebviewPanel: async (panel) => HomePanel.restore(panel, deps),
+    }),
     vscode.workspace.registerTextDocumentContentProvider(REVIEW_SCHEME, new ReviewContentProvider(conn)),
     vscode.workspace.registerFileSystemProvider(POLICY_SCHEME, new PolicyFileSystem(conn), { isCaseSensitive: true }),
-    conn.onState((s) => {
-      if (!s) {
-        status.text = "$(circle-slash) Synapse";
-        status.tooltip = "synapse-core is not connected";
-      } else {
-        const working = s.agents.filter((a) => a.status === "working").length;
-        const waiting = s.approvals.filter((a) => a.status === "pending").length;
-        const conflicts = s.conflicts.filter((c) => c.severity !== "info").length;
-        const held = s.messages.filter((m) => m.status === "held").length;
-        const review = s.tasks.filter((t) => t.status === "review").length;
-        status.text = `$(organization) ${s.agents.length} agents${working ? ` · ${working} working` : ""}${waiting ? ` · $(bell) ${waiting}` : ""}${review ? ` · $(tasklist) ${review}` : ""}${held ? ` · $(mail) ${held}` : ""}${conflicts ? ` · $(warning) ${conflicts}` : ""}`;
-        status.tooltip = `Synapse — base ${s.baseRef}`;
-        status.backgroundColor = conflicts ? new vscode.ThemeColor("statusBarItem.warningBackground") : undefined;
-      }
-      status.show();
-    }),
-    conn.onEvent((ev) => {
-      if (ev.type === "core.log") {
-        const d = ev.data as { level?: string; message?: string };
-        if (d.level === "warning" && d.message) void vscode.window.showWarningMessage(`Synapse: ${d.message}`, "Open audit");
-        return;
-      }
-      if (ev.type === "message.updated") {
-        const m = ev.data as { status: string; from: string; subject: string };
-        if (m.status === "held") void vscode.window.showWarningMessage(`Synapse held a message from ${m.from}: "${m.subject}". Review it on the board.`);
-        return;
-      }
-      if (ev.type === "approval.requested") {
-        const ap = ev.data as { agentId: string; title: string };
-        const name = conn.state?.agents.find((a) => a.id === ap.agentId)?.name ?? ap.agentId;
-        void vscode.window.showInformationMessage(`${name} asks: ${ap.title}`, "Open board").then((x) => {
-          if (x) void vscode.commands.executeCommand("workbench.view.extension.synapse");
-        });
-      }
-    }),
+    // Title bar status, desktop notifications and the in-app ones.
+    attention(conn),
   );
 
   const pickAgent = async (id: unknown, filter?: (a: AgentState) => boolean): Promise<string | undefined> => {
     if (typeof id === "string") return id;
     const agents = (conn.state?.agents ?? (await conn.call("agents.list"))).filter(filter ?? (() => true));
     if (!agents.length) {
-      void vscode.window.showInformationMessage("Synapse: no matching agents.");
+      void vscode.window.showInformationMessage(l("Synapse: no matching agents."));
       return undefined;
     }
     if (agents.length === 1) return agents[0]!.id;
     const pick = await vscode.window.showQuickPick(
       agents.map((a) => ({ label: a.name, description: a.status, detail: a.worktree.branch, id: a.id })),
-      { placeHolder: "Choose an agent" },
+      { placeHolder: l("Choose an agent") },
     );
     return pick?.id;
   };
@@ -91,12 +69,26 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         try {
           await fn(...args);
         } catch (err) {
-          void vscode.window.showErrorMessage(`Synapse: ${(err as Error).message}`);
+          void vscode.window.showErrorMessage(l("Synapse: {0}", (err as Error).message));
         }
       }),
     );
 
   register("synapse.startCore", () => conn.connect(true));
+  register("synapse.openHome", () => HomePanel.show(deps));
+  register("synapse.showFiles", () => vscode.commands.executeCommand("workbench.view.explorer"));
+  register("synapse.showAgents", () => vscode.commands.executeCommand("workbench.view.extension.synapse"));
+  register("synapse.showDetail", async (id) => {
+    if (typeof id === "string") selection.select(id);
+    await vscode.commands.executeCommand("synapse.detail.focus");
+  });
+  register("synapse.enableTeam", async () => {
+    const name = await vscode.window.showInputBox({ prompt: l("Your name in team mode (teammates see it)"), placeHolder: l("Leave empty to use your git user.name") });
+    if (name === undefined) return;
+    const t = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: l("Synapse: turning on team mode…") }, () => conn.call("team.enable", { name: name || undefined }));
+    if (t.error) void vscode.window.showWarningMessage(l("Synapse team sync: {0}", t.error));
+    else void vscode.window.showInformationMessage(l("Synapse: team mode is on. You are \"{0}\".", t.person));
+  });
   register("synapse.stopCore", () => conn.stopCore());
 
   register("synapse.addAgent", async () => {
@@ -159,7 +151,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   });
   register("synapse.liveDiff", async (id) => {
     const a = await pickAgent(id);
-    if (a) LiveDiffPanel.show(conn, a);
+    if (a) LiveDiffPanel.show(conn, context.extensionUri, a);
   });
   register("synapse.steerAgent", async (id) => {
     const a = await pickAgent(id, (x) => x.status === "working" || x.status === "awaiting-approval");
@@ -313,24 +305,29 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     ReviewPanel.show(conn, review);
   });
 
-  // Onboarding (phase 4): the walkthrough opens once per repository.
-  const seenKey = `synapse.walkthroughShown:${repoRoot}`;
-  if (vscode.workspace.getConfiguration("synapse").get<boolean>("showWalkthroughOnStart", true) && !context.globalState.get(seenKey)) {
-    void context.globalState.update(seenKey, true);
+  // The three columns: agents on the left, home in the middle, the selected
+  // agent on the right. Opened once per repository; later the layout the
+  // person leaves is restored.
+  const layoutKey = "synapse.layoutShown";
+  if (!context.workspaceState.get(layoutKey)) {
+    void context.workspaceState.update(layoutKey, true);
+    void (async () => {
+      await vscode.commands.executeCommand("workbench.view.extension.synapse").then(undefined, () => {});
+      await vscode.commands.executeCommand("workbench.view.extension.synapse-detail").then(undefined, () => {});
+      await HomePanel.show(deps);
+    })();
+  } else if (!HomePanel.isOpen && vscode.workspace.getConfiguration("synapse").get<boolean>("openHomeOnStart", true)) {
+    // The serializer restores a home tab the person left open; give it a moment first.
+    setTimeout(() => !HomePanel.isOpen && void HomePanel.show(deps, true), 1500);
+  }
+  if (vscode.workspace.getConfiguration("synapse").get<boolean>("showWalkthroughOnStart", false)) {
     void vscode.commands.executeCommand("workbench.action.openWalkthrough", `${context.extension.id}#synapse.gettingStarted`, false);
   }
 
   if (vscode.workspace.getConfiguration("synapse").get<boolean>("autoStartCore", true)) {
-    conn.connect(true).catch((err: Error) => {
-      status.text = "$(error) Synapse";
-      status.tooltip = err.message;
-      status.show();
-    });
+    conn.connect(true).catch((err: Error) => void vscode.window.showErrorMessage(l("Synapse could not start synapse-core: {0}", err.message)));
   } else {
-    conn.connect(false).catch(() => {
-      status.text = "$(circle-slash) Synapse";
-      status.show();
-    });
+    conn.connect(false).catch(() => {});
   }
 }
 

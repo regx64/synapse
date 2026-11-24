@@ -79,6 +79,9 @@ for (const [name, dir] of [...packages].sort(([a], [b]) => a.localeCompare(b))) 
 }
 const grammarsDir = path.resolve("licenses", "grammars");
 for (const f of fs.readdirSync(grammarsDir).sort()) sections.push(fs.readFileSync(path.join(grammarsDir, f), "utf8").trim());
+// Fonts in media/fonts (SIL Open Font License 1.1).
+const fontsDir = path.resolve("licenses", "fonts");
+for (const f of fs.readdirSync(fontsDir).sort()) sections.push(`${f.replace(/-OFL\.txt$/, "")} font (OFL-1.1)\n\n${fs.readFileSync(path.join(fontsDir, f), "utf8").trim()}`);
 const header = [
   "Synapse Collaboration (synapse-collab) and synapse-core",
   "Copyright (c) 2026 The Synapse contributors. MIT License (see LICENSE).",

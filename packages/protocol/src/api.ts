@@ -768,6 +768,8 @@ export interface CoreMethods {
   };
   "team.status": { params: void; result: TeamState };
   /** Publishes this person's agents to the remote and fetches teammates'. Needs team mode enabled. */
+  /** Turns team mode on for this clone (written to `.synapse/config.json`, which is not committed) and syncs. */
+  "team.enable": { params: { name?: string; remote?: string }; result: TeamState };
   "team.sync": { params: void; result: TeamState };
   /** Removes everything this person published from the remote. */
   "team.leave": { params: void; result: TeamState };

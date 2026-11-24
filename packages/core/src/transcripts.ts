@@ -49,6 +49,7 @@ export class TranscriptStore {
 
   private onEvent(ev: CoreEvent): void {
     if (ev.type === "agent.removed") return this.remove((ev.data as { id: string }).id);
+    if (ev.type === "agent.updated") return this.linkTask(ev.data as { id: string; currentTaskId?: string });
     if (ev.type !== "agent.output") return;
     const o = ev.data as AgentOutputEvent;
     const list = this.entries(o.agentId);
@@ -83,6 +84,17 @@ export class TranscriptStore {
       }
       default:
         return;
+    }
+  }
+
+  /** A task's prompt goes out just before the agent is marked as working on it: link the two. */
+  private linkTask(a: { id: string; currentTaskId?: string }): void {
+    if (!a.currentTaskId) return;
+    const list = this.byAgent.get(a.id);
+    const prompt = list?.slice(-3).reverse().find((e) => e.kind === "prompt" && !e.followup);
+    if (prompt && !prompt.taskId) {
+      prompt.taskId = a.currentTaskId;
+      this.touch(a.id);
     }
   }
 
