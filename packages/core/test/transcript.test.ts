@@ -60,7 +60,8 @@ test("an agent's conversation is kept: prompts, messages, tool calls, guidance a
     assert.deepEqual((await core.handlers()["agents.transcript"]({ id: "alpha" })).map((e) => e.kind), withTask.map((e) => e.kind));
 
     // Removing the agent forgets it.
-    await core.agents.remove("alpha");
+    // (The worktree stays: on Windows the first core's agent can still hold it for a moment.)
+    await core.agents.remove("alpha", true);
     assert.ok(!fs.existsSync(path.join(repo, ".synapse", "transcripts", "alpha.json")));
   } finally {
     await core.close();
