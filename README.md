@@ -37,7 +37,7 @@ replaces only the UI. See [the plan](docs/plan.md).
   - changes that will not merge as text (`git merge-tree`, without touching
     any checkout);
   - two agents in the same file (informational).
-- **Approvals.** Agents' permission requests show up on the board for you.
+- **Approvals.** Agents' permission requests show up on the home tab and in the agent's conversation.
 - **Combined review.** Merge all agents' work in an integration worktree, run
   your tests on the combined result, see one diff, then merge in one step.
   Merging is refused while tests fail or conflicts remain, unless you force it.
@@ -48,7 +48,7 @@ replaces only the UI. See [the plan](docs/plan.md).
   repository: your git remote carries everyone's work in progress (no
   server), and conflicts across people show up before anyone merges. Off by
   default.
-- **Overview.** The board opens on what needs you (approvals, conflicts,
+- **Overview.** The home tab opens on what needs you (approvals, conflicts,
   stuck agents, held messages, decisions, reviews), each with its action, and
   every agent at a glance.
 - **Live diff and comments.** Watch an agent's changes as it works, comment on
@@ -66,7 +66,7 @@ replaces only the UI. See [the plan](docs/plan.md).
   everything else comes to you; everything is audited.
 - **No telemetry.** Synapse collects nothing about you; crash reports are
   redacted and stay on your machine. The built-in GitHub Copilot is removed.
-- **UIs:** a built-in extension (board, editor markers in each agent's
+- **UIs:** a built-in extension (agents, home tab and agent detail in three columns, editor markers in each agent's
   color, conflicts in the Problems panel, status bar, review panel) and a
   `synapse` CLI. Both are clients of the same core API.
 

@@ -8,7 +8,7 @@ recorded here; "not verified" means written but not yet run end to end.
 | Item | State |
 | --- | --- |
 | Build repo: pinned upstream tag, patch-apply script, `product.json`, telemetry off, Open VSX | Done. Steps fetch → patch → prepare → branding check ran against Code - OSS 1.147.0 |
-| Development builds for Linux, macOS, Windows in CI | Done: full Code - OSS 1.147.0 builds on Linux x64, macOS arm64 and Windows x64 (`dev-build.yml`); unsigned artifacts. Each build is then launched and checked (`build/smoke-app.mjs`): the workbench opens under the Synapse name, the built-in extension starts synapse-core, the board renders, no Copilot and no telemetry notice; a screenshot is kept |
+| Development builds for Linux, macOS, Windows in CI | Done: full Code - OSS 1.147.0 builds on Linux x64, macOS arm64 and Windows x64 (`dev-build.yml`); unsigned artifacts. Each build is then launched and checked (`build/smoke-app.mjs`): the workbench opens under the Synapse name, the built-in extension starts synapse-core, the agents list, home tab and agent column render, agent status shows in the title bar, the workbench uses Synapse Dark and Pretendard, the Korean language pack ships, no Copilot and no telemetry notice; a screenshot is kept |
 | Built-in extension skeleton: board panel, commands, status bar | Done (beyond skeleton: markers, diagnostics, review panel). Smoke-tested in VS Code 1.147.0 (`npm run test:smoke -w extensions/synapse-collab`): activates, starts the core with the editor's runtime, shows a two-agent conflict in the Problems panel, registers its commands, and applies an agent policy edited as JSON. The board (all five tabs) and the review panel (blocked, clean and merged reviews) were rendered in Chromium from real core state and checked by eye. |
 | synapse-core skeleton: separate process, local JSON-RPC API, state store, event stream | Done |
 | Rehearse one upstream sync and measure it | Automated in `upstream-sync.yml`; no newer upstream release exists yet to rehearse against |
@@ -25,7 +25,7 @@ G1 numbers so far: **2 core patches** (publisher and copyright from `product.jso
 | Per-agent worktree creation and cleanup | Done |
 | Ownership tracking down to the symbol with tree-sitter | Done for TypeScript/TSX, JavaScript, Python, Go, Rust, Java |
 | Conflict detection: same symbol; signature change with callers in another worktree | Done, plus textual-conflict prediction and same-file info. Arity-aware: a new call that already fits the new signature is not flagged |
-| Collaboration board and editor markers | Done (extension) |
+| Collaboration UI and editor markers | Done (extension): redesigned as three columns (agents, a pinned home tab, the selected agent's conversation, plan and changes), Synapse Dark, Pretendard/JetBrains Mono, English and Korean; see docs/ui-style.md. `build/ui-shots.mjs` captures it with four demo agents |
 | Combined review: diff of the merged result, test run, merge | Done (core, CLI, extension panel with per-file diff editor) |
 
 ACP compatibility run on 2026-11-23 (`node scripts/acp-compat.mjs claude codex mock`):
@@ -51,7 +51,7 @@ vary from run to run, and with two weeks of internal use.
 | --- | --- |
 | Task graph: split a goal into subtasks, assign, dependencies | Done: tasks with assignee, dependencies (cycles rejected), scope, auto-start; board tab and CLI |
 | Team mode | MVP: teammates' agents shared through the git remote (`refs/synapse/team/…`, no server), part of conflict detection and shown read-only; off by default. Tested with a bare remote and two clones (`packages/core/test/team.test.ts`). Continuing a teammate's agent's work (`team.adopt`) with a claim that alerts its owner, and editor/viewer roles from the shared config. Not yet: presence finer than the sync interval; roles are a coordination aid, not access control |
-| Overview board | Done: the board opens on what needs the person (alerts computed in the core, `computeAlerts`, with one-click actions) and every agent at a glance; `synapse alerts`. Tested in `packages/core/test/alerts.test.ts`; rendered from real core state and checked by eye |
+| Overview (home tab) | Done: the home tab opens on what needs the person (alerts computed in the core, `computeAlerts`, with one-click actions) and every agent at a glance; `synapse alerts`. Tested in `packages/core/test/alerts.test.ts`; rendered from real core state and checked by eye |
 | Live diff and comments | Done: an agent's changes refresh with every snapshot; comments on lines follow their code, and become guidance, a task, or a note. Tested in `packages/core/test/comments.test.ts`; the panel was rendered from real core state and checked by eye |
 | Steering and takeover | Done: guidance for a working agent (after the turn or interrupting it; the task stays in progress) and handing unfinished work, task and context to another agent. Tested with scripted agents (`packages/core/test/steer.test.ts`) |
 | Handoffs and messages in a structured format (C2) | Done: typed messages with files and symbols; automatic handoffs on "done" use ownership facts; delivered as labeled data; flagged messages held for the person |
@@ -89,7 +89,7 @@ Done criteria (50 beta users, retention measurement) are outside what code can d
   snapshots) but cannot stop a shell command from writing outside the
   worktree. That needs the phase 3 permission model and OS sandboxing.
 - **Upstream branding in the UI.** The build renames "VS Code" to Synapse in UI text (`build/rebrand.mjs`). Left: phrases naming Microsoft's real products, "Microsoft" for its own services, help links to Microsoft's documentation, and translations from language packs; see [branding-audit.md](branding-audit.md).
-- **No built-in AI chat.** The built-in GitHub Copilot is removed (patch 0002) and the editor's own AI features (chat, Agents window) are off by default (`chat.disableAIFeatures`). Synapse's agents work through its board, not that chat.
+- **No built-in AI chat.** The built-in GitHub Copilot is removed (patch 0002) and the editor's own AI features (chat, Agents window) are off by default (`chat.disableAIFeatures`). Synapse's agents work through its own views, not that chat.
 - **Same-user processes.** An agent's shell can read `.synapse/core.json`
   and talk to the core as the person. Only OS-level isolation (containers,
   separate users) closes that.
