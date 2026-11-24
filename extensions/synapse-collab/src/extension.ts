@@ -192,7 +192,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     const note = await vscode.window.showInputBox({ prompt: `Note for ${to.label} (optional)`, placeHolder: "e.g. The tests in cart.test.ts still fail" });
     if (note === undefined) return;
     const r = await conn.call("agents.takeover", { from, to: to.id, note: note || undefined });
-    void vscode.window.showInformationMessage(`Synapse: ${r.to.name} took over ${r.task ? r.task.id : "the work"} from ${r.from.name} (${r.files.length} file(s) moved).`);
+    void vscode.window.showInformationMessage(`Synapse: ${r.to.name} took over ${r.task ? r.task.id : "the work"} from ${r.from?.name} (${r.files.length} file(s) moved).`);
   });
   register("synapse.removeAgent", async (id) => {
     const a = await pickAgent(id);
