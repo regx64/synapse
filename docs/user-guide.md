@@ -328,3 +328,13 @@ whatever your git remote allows.
 Synapse collects no telemetry and sends nothing about you. Crash reports of
 the core stay in `~/.synapse-ide/crash-reports/`. Details:
 [privacy and data flow](privacy-and-data-flow.md).
+
+## Keyboard
+
+| Keys (Windows/Linux · macOS) | Does |
+| --- | --- |
+| Ctrl+Alt+1…9 · ⌘⌥1…9 | select agent 1…9 and show its detail |
+| Ctrl+Alt+] / [ · ⌘⌥] / [ | next / previous agent |
+| Ctrl+Alt+G · ⌘⌥G | type guidance to the selected agent |
+| Ctrl+Alt+H · ⌘⌥H | open the home tab |
+| Ctrl/Cmd+Enter (in the guidance box) | send |

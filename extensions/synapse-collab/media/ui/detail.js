@@ -316,6 +316,11 @@
     if (d?.type === "state") {
       if (d.selected !== msg.selected) stickToBottom = true;
       msg = d;
+    } else if (d?.type === "focusComposer") {
+      tab = tab === "conversation" ? tab : "conversation";
+      const ta = /** @type {HTMLTextAreaElement|null} */ (document.getElementById("composer-text"));
+      if (ta) ta.focus();
+      return;
     } else if (d?.type === "transcript") {
       transcript = { id: d.id, entries: d.entries || [] };
     } else return;

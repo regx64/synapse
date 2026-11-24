@@ -80,7 +80,7 @@ exports.run = async function run() {
     const homeTab = await waitFor(() => vscode.window.tabGroups.all.flatMap((g) => g.tabs).find((t) => t.input instanceof vscode.TabInputWebview && t.input.viewType.endsWith("synapse.home")), "home tab");
     assert.ok(homeTab.isPinned, "home tab is pinned");
     assert.equal(vscode.window.tabGroups.all[0].tabs.indexOf(homeTab), 0, "home tab comes first");
-    for (const c of ["synapse.openHome", "synapse.showFiles", "synapse.showAgents", "synapse.showDetail", "synapse.enableTeam", "synapse.agents.focus", "synapse.detail.focus"]) assert.ok(commands.includes(c), c);
+    for (const c of ["synapse.openHome", "synapse.showFiles", "synapse.showAgents", "synapse.showDetail", "synapse.enableTeam", "synapse.agents.focus", "synapse.detail.focus", "synapse.selectAgent", "synapse.nextAgent", "synapse.focusGuidance"]) assert.ok(commands.includes(c), c);
 
     // Each agent's conversation is kept by the core for the detail view.
     const convo = await client.call("agents.transcript", { id: "alpha" });

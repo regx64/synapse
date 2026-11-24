@@ -43,6 +43,14 @@ export class DetailView implements vscode.WebviewViewProvider, vscode.Disposable
     );
   }
 
+  /** Shows the view and puts the cursor in its guidance box. */
+  async focusComposer(): Promise<void> {
+    await vscode.commands.executeCommand("synapse.detail.focus");
+    // The view may have just been created: give its page a moment to load.
+    for (let i = 0; i < 20 && !this.view; i++) await new Promise((r) => setTimeout(r, 50));
+    void this.view?.webview.postMessage({ type: "focusComposer" });
+  }
+
   /** Streaming output arrives many times a second: send at most ~8 updates a second. */
   private scheduleTranscript(): void {
     if (this.timer) return;

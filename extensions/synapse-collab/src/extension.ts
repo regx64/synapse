@@ -83,6 +83,29 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     if (typeof id === "string") selection.select(id);
     await vscode.commands.executeCommand("synapse.detail.focus");
   });
+  // Keyboard: Ctrl/Cmd+Alt+1…9 picks an agent, Ctrl/Cmd+Alt+G types guidance to it.
+  const agentAt = (n: unknown): string | undefined => {
+    const agents = conn.state?.agents ?? [];
+    if (typeof n === "string") return agents.some((a) => a.id === n) ? n : undefined;
+    return typeof n === "number" ? agents[n - 1]?.id : undefined;
+  };
+  register("synapse.selectAgent", async (n) => {
+    const id = agentAt(n);
+    if (!id) return;
+    selection.select(id);
+    await vscode.commands.executeCommand("synapse.detail.focus");
+  });
+  register("synapse.nextAgent", () => {
+    const agents = conn.state?.agents ?? [];
+    const i = agents.findIndex((a) => a.id === selection.current);
+    if (agents.length) selection.select(agents[(i + 1) % agents.length]!.id);
+  });
+  register("synapse.previousAgent", () => {
+    const agents = conn.state?.agents ?? [];
+    const i = agents.findIndex((a) => a.id === selection.current);
+    if (agents.length) selection.select(agents[(i - 1 + agents.length) % agents.length]!.id);
+  });
+  register("synapse.focusGuidance", () => detailView.focusComposer());
   register("synapse.enableTeam", async () => {
     const name = await vscode.window.showInputBox({ prompt: l("Your name in team mode (teammates see it)"), placeHolder: l("Leave empty to use your git user.name") });
     if (name === undefined) return;

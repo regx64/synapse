@@ -47,7 +47,8 @@
     if (!state.agents.length) {
       list.append(h("p", { class: "muted small pad" }, [t("agents.none")]));
     }
-    for (const a of state.agents) {
+    const mod = navigator.platform.startsWith("Mac") ? "⌘⌥" : "Ctrl+Alt+";
+    for (const [i, a] of state.agents.entries()) {
       const st = statusOf(a, state);
       const { title } = taskOf(a, state);
       const plan = planOf(a);
@@ -58,6 +59,7 @@
             {
               class: "arow",
               "aria-current": String(a.id === selected),
+              title: i < 9 ? `${a.name} (${mod}${i + 1})` : a.name,
               onclick: () => post({ type: "select", id: a.id, show: "detail" }),
               ondblclick: () => post({ type: "select", id: a.id, show: "diff" }),
               oncontextmenu: (e) => (e.preventDefault(), cmd("synapse.agentMenu", a.id)),

@@ -196,6 +196,26 @@
         "command": "synapse.enableTeam",
         "title": "%cmd.enableTeam%",
         "category": "Synapse"
+      },
+      {
+        "command": "synapse.selectAgent",
+        "title": "%cmd.selectAgent%",
+        "category": "Synapse"
+      },
+      {
+        "command": "synapse.nextAgent",
+        "title": "%cmd.nextAgent%",
+        "category": "Synapse"
+      },
+      {
+        "command": "synapse.previousAgent",
+        "title": "%cmd.previousAgent%",
+        "category": "Synapse"
+      },
+      {
+        "command": "synapse.focusGuidance",
+        "title": "%cmd.focusGuidance%",
+        "category": "Synapse"
       }
     ],
     "menus": {
@@ -248,6 +268,10 @@
         },
         {
           "command": "synapse.showDetail",
+          "when": "false"
+        },
+        {
+          "command": "synapse.selectAgent",
           "when": "false"
         }
       ]
@@ -492,7 +516,83 @@
       "editor.fontSize": 13,
       "editor.lineHeight": 20,
       "terminal.integrated.fontFamily": "'JetBrains Mono', Menlo, Consolas, monospace"
-    }
+    },
+    "keybindings": [
+      {
+        "command": "synapse.selectAgent",
+        "args": 1,
+        "key": "ctrl+alt+1",
+        "mac": "cmd+alt+1"
+      },
+      {
+        "command": "synapse.selectAgent",
+        "args": 2,
+        "key": "ctrl+alt+2",
+        "mac": "cmd+alt+2"
+      },
+      {
+        "command": "synapse.selectAgent",
+        "args": 3,
+        "key": "ctrl+alt+3",
+        "mac": "cmd+alt+3"
+      },
+      {
+        "command": "synapse.selectAgent",
+        "args": 4,
+        "key": "ctrl+alt+4",
+        "mac": "cmd+alt+4"
+      },
+      {
+        "command": "synapse.selectAgent",
+        "args": 5,
+        "key": "ctrl+alt+5",
+        "mac": "cmd+alt+5"
+      },
+      {
+        "command": "synapse.selectAgent",
+        "args": 6,
+        "key": "ctrl+alt+6",
+        "mac": "cmd+alt+6"
+      },
+      {
+        "command": "synapse.selectAgent",
+        "args": 7,
+        "key": "ctrl+alt+7",
+        "mac": "cmd+alt+7"
+      },
+      {
+        "command": "synapse.selectAgent",
+        "args": 8,
+        "key": "ctrl+alt+8",
+        "mac": "cmd+alt+8"
+      },
+      {
+        "command": "synapse.selectAgent",
+        "args": 9,
+        "key": "ctrl+alt+9",
+        "mac": "cmd+alt+9"
+      },
+      {
+        "command": "synapse.focusGuidance",
+        "key": "ctrl+alt+g",
+        "mac": "cmd+alt+g"
+      },
+      {
+        "command": "synapse.nextAgent",
+        "key": "ctrl+alt+]",
+        "mac": "cmd+alt+]"
+      },
+      {
+        "command": "synapse.previousAgent",
+        "key": "ctrl+alt+[",
+        "mac": "cmd+alt+["
+      },
+      {
+        "command": "synapse.openHome",
+        "key": "ctrl+alt+h",
+        "mac": "cmd+alt+h"
+      }
+    ]
   },
   "scripts": {
     "build": "node esbuild.mjs",

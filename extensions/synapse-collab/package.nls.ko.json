@@ -67,5 +67,9 @@
   "color.statusError": "Synapse: 충돌이나 오류.",
   "color.statusIdle": "Synapse: 에이전트가 대기 중.",
   "config.workbenchFont": "작업 화면에 Synapse 글꼴(Pretendard)을 씁니다. 끄면 시스템 글꼴을 씁니다.",
-  "config.autoHideAgentColumn": "창 너비가 1280픽셀보다 좁으면 에이전트 칸(보조 사이드바)을 숨기고, 넓어지면 다시 보여 줍니다. 직접 열면 열린 채로 둡니다."
+  "config.autoHideAgentColumn": "창 너비가 1280픽셀보다 좁으면 에이전트 칸(보조 사이드바)을 숨기고, 넓어지면 다시 보여 줍니다. 직접 열면 열린 채로 둡니다.",
+  "cmd.selectAgent": "에이전트 선택",
+  "cmd.nextAgent": "다음 에이전트",
+  "cmd.previousAgent": "이전 에이전트",
+  "cmd.focusGuidance": "선택한 에이전트에게 지시 추가"
 }
