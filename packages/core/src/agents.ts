@@ -204,7 +204,7 @@ export class AgentManager {
     const pending = agent.guidance ?? [];
     const full = pending.length ? `${text}\n\n${guidanceBlock(pending)}` : text;
     this.store.updateAgent(id, { status: "working", turn: { prompt: full, startedAt: nowIso() }, guidance: undefined, lastMessage: "", plan: undefined, error: undefined });
-    this.store.emitEvent("agent.output", { agentId: id, kind: "turn", text: `> ${full}` });
+    this.store.emitEvent("agent.output", { agentId: id, kind: "turn", phase: "prompt", text: `> ${full}` });
     this.runTurn(id, proc, full);
   }
 
@@ -233,7 +233,7 @@ export class AgentManager {
       return this.store.getAgent(id)!;
     }
     const next = this.store.updateAgent(id, { guidance: [...(agent.guidance ?? []), { text: t, mode, at: nowIso() }] })!;
-    this.store.emitEvent("agent.output", { agentId: id, kind: "turn", text: `guidance (${mode === "now" ? "interrupting" : "after this turn"}): ${t}` });
+    this.store.emitEvent("agent.output", { agentId: id, kind: "turn", phase: "guidance", mode, guidance: t, text: `guidance (${mode === "now" ? "interrupting" : "after this turn"}): ${t}` });
     if (mode === "now") this.cancel(id, true);
     return next;
   }
@@ -287,7 +287,7 @@ export class AgentManager {
       turn: agent.turn ? { ...agent.turn, endedAt: nowIso(), stopReason } : undefined,
       error,
     });
-    this.store.emitEvent("agent.output", { agentId: id, kind: "turn", text: `turn ended: ${stopReason}${error ? ` (${error})` : ""}` });
+    this.store.emitEvent("agent.output", { agentId: id, kind: "turn", phase: "end", stopReason, error, text: `turn ended: ${stopReason}${error ? ` (${error})` : ""}` });
     this.deps.onFilesChanged(id);
     this.releaseWaiters(id);
     if (this.takingOver.has(id)) return;
@@ -302,7 +302,7 @@ export class AgentManager {
         error: undefined,
         turn: { prompt: turn?.prompt ?? text, startedAt: turn?.startedAt ?? nowIso(), steered: (turn?.steered ?? 0) + 1 },
       });
-      this.store.emitEvent("agent.output", { agentId: id, kind: "turn", text: `> ${text}` });
+      this.store.emitEvent("agent.output", { agentId: id, kind: "turn", phase: "followup", text: `> ${text}` });
       this.runTurn(id, proc, text);
       return;
     }
@@ -546,7 +546,7 @@ export class AgentManager {
         if (this.toolInputs.size > 500) this.toolInputs.delete(this.toolInputs.keys().next().value!);
         this.store.updateAgent(agentId, { toolCalls: calls.slice(-MAX_TOOL_CALLS) });
         if (!prev || prev.status !== next.status) {
-          this.store.emitEvent("agent.output", { agentId, kind: "tool", text: `${next.status}: ${next.title}` });
+          this.store.emitEvent("agent.output", { agentId, kind: "tool", tool: next, text: `${next.status}: ${next.title}` });
         }
         if (next.status === "completed" && (next.kind === "edit" || next.kind === "delete" || next.kind === "move" || next.kind === "execute")) {
           this.deps.onFilesChanged(agentId);

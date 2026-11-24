@@ -20,6 +20,7 @@ import { OwnershipService } from "./ownership.js";
 import { listPresets } from "./presets.js";
 import { ReviewService } from "./review.js";
 import { StateStore } from "./store.js";
+import { TranscriptStore } from "./transcripts.js";
 import { debounce, KeyedSerializer } from "./util.js";
 import { WorktreeManager } from "./worktrees.js";
 
@@ -56,6 +57,7 @@ export class SynapseCore {
   readonly agents: AgentManager;
   readonly reviews: ReviewService;
   readonly comments: CommentService;
+  readonly transcripts: TranscriptStore;
   readonly team: TeamService;
   readonly collab: CollabService;
   /** Where the API is served; set by serve(). Agents' MCP servers connect back here. */
@@ -96,6 +98,7 @@ export class SynapseCore {
       refreshOwnership: (id) => this.ownership.refresh(id),
       log: this.log,
     });
+    this.transcripts = new TranscriptStore(this.store);
     this.comments = new CommentService({ store: this.store, agents: this.agents, collab: this.collab, ownership: this.ownership });
     this.team = new TeamService({ store: this.store, config: () => this.config, log: this.log, onPeersChanged: () => this.scheduleConflictCheck() });
     this.reviews = new ReviewService({
@@ -237,6 +240,10 @@ export class SynapseCore {
       "agents.restart": (p) => this.agents.restart(req(p, "id")),
       "agents.steer": (p) => this.agents.steer(req(p, "id"), req(p, "text"), p.mode ?? "next"),
       "agents.diff": (p) => this.comments.diff(req(p, "id"), p.path),
+      "agents.transcript": (p) => {
+        if (!this.store.getAgent(req(p, "id"))) throw new RpcError(ErrorCodes.NotFound, `No agent "${p.id}"`);
+        return this.transcripts.list(p.id, p.from, p.limit);
+      },
       "comments.list": (p) => this.comments.list(p?.agentId),
       "comments.add": (p) => this.comments.add(p),
       "team.status": () => this.team.status(),
@@ -367,6 +374,7 @@ export class SynapseCore {
     this.scheduleConflictCheck.cancel();
     await this.agents.shutdown();
     this.store.flush();
+    this.transcripts.flush();
   }
 }
 

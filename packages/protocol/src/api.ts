@@ -644,6 +644,42 @@ export interface AgentOutputEvent {
   agentId: string;
   kind: "message" | "thought" | "tool" | "plan" | "stderr" | "turn";
   text: string;
+  /** For "turn": what happened. "followup" is the turn that carries guidance. */
+  phase?: "prompt" | "guidance" | "followup" | "end";
+  /** For "turn" with phase "guidance". */
+  mode?: "now" | "next";
+  guidance?: string;
+  /** For "turn" with phase "end". */
+  stopReason?: string;
+  error?: string;
+  /** For "tool": the call as it is now. */
+  tool?: ToolCallSummary;
+}
+
+/**
+ * One entry of an agent's conversation, as the agent-detail view shows it.
+ * Kept per agent in `.synapse/transcripts/`, redacted and capped.
+ */
+export interface TranscriptEntry {
+  /** Increasing per agent. */
+  n: number;
+  at: string;
+  kind: "prompt" | "guidance" | "message" | "thought" | "tool" | "end";
+  text: string;
+  /** prompt: the task the agent was working on. */
+  taskId?: string;
+  /** prompt: a follow-up turn carrying guidance. */
+  followup?: boolean;
+  /** guidance: when the agent gets it. */
+  mode?: "now" | "next";
+  /** tool */
+  toolId?: string;
+  toolKind?: string;
+  status?: ToolCallSummary["status"];
+  locations?: string[];
+  /** end */
+  stopReason?: string;
+  error?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -718,6 +754,8 @@ export interface CoreMethods {
    */
   /** The agent's changes against its base as hunks (refreshes its snapshot first). */
   "agents.diff": { params: { id: string; path?: string }; result: AgentDiff };
+  /** The agent's conversation, oldest first. `from` returns entries from that `n` on (pass the newest `n` you have: it may still be growing). */
+  "agents.transcript": { params: { id: string; from?: number; limit?: number }; result: TranscriptEntry[] };
   "comments.list": { params: { agentId?: string } | void; result: CodeComment[] };
   /**
    * Comments on lines of an agent's changes. `action` "guidance" also gives it
