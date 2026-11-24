@@ -21,6 +21,8 @@ async function addMock(core: SynapseCore, id: string, turns?: unknown[][]) {
 }
 
 const state = (core: SynapseCore, id: string) => core.store.getAgent(id)!;
+/** File text with LF line endings (git checks out CRLF on Windows runners). */
+const read = (...p: string[]) => fs.readFileSync(path.join(...p), "utf8").replace(/\r\n/g, "\n");
 const idle = (core: SynapseCore, id: string) => waitFor(() => (state(core, id).status === "idle" ? state(core, id) : undefined), `${id} idle`);
 const working = (core: SynapseCore, id: string) => waitFor(() => (state(core, id).status === "working" ? true : undefined), `${id} working`);
 
@@ -116,9 +118,9 @@ test("another agent takes over unfinished work: changes, task and context move w
     assert.match(gitOut(repo, "for-each-ref", "--format=%(refname)", "refs/synapse/takeovers"), /refs\/synapse\/takeovers\/alpha-to-beta-\d+/);
 
     // The work moved: beta has it, alpha is back at its base.
-    assert.equal(fs.readFileSync(path.join(b.worktree.path, "src/tax.ts"), "utf8"), "export const rate = 0.1;\n");
+    assert.equal(read(b.worktree.path, "src/tax.ts"), "export const rate = 0.1;\n");
     assert.ok(!fs.existsSync(path.join(a.worktree.path, "src/tax.ts")));
-    assert.equal(fs.readFileSync(path.join(a.worktree.path, "src/pricing.ts"), "utf8"), SHOP["src/pricing.ts"]);
+    assert.equal(read(a.worktree.path, "src/pricing.ts"), SHOP["src/pricing.ts"]);
 
     // Beta was briefed, then finished; the task is beta's.
     const s = await idle(core, "beta");
