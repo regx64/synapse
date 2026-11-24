@@ -123,7 +123,17 @@ try {
 } catch (err) {
   check("app run", false, err.message.split("\n")[0]);
 } finally {
+  const pid = app.process().pid;
   await app.close().catch(() => {});
+  // Electron's helper processes can outlive close() on Windows and keep the
+  // build folder locked; end the whole process tree.
+  if (process.platform === "win32" && pid) {
+    try {
+      execFileSync("taskkill", ["/PID", String(pid), "/T", "/F"], { stdio: "ignore" });
+    } catch {
+      // already gone
+    }
+  }
   failed = checks.some((c) => !c.ok);
 }
 

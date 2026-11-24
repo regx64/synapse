@@ -81,7 +81,15 @@ jobs:
           retention-days: 7
       - name: Move the build into the workspace (artifact paths cannot use ..)
         shell: bash
-        run: mv "$SYNAPSE_VSCODE_DIR/../VSCode-${{ matrix.platform }}-${{ matrix.arch }}" .
+        # Retry: on Windows a just-closed app can hold files for a few seconds.
+        run: |
+          src="$SYNAPSE_VSCODE_DIR/../VSCode-${{ matrix.platform }}-${{ matrix.arch }}"
+          for i in 1 2 3 4 5 6; do
+            mv "$src" . && exit 0
+            echo "move failed (attempt $i), retrying in 5 s"
+            sleep 5
+          done
+          exit 1
       - uses: actions/upload-artifact@v6
         with:
           name: synapse-${{ matrix.platform }}-${{ matrix.arch }}
