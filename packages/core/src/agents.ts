@@ -7,13 +7,16 @@ import { AcpAgentProcess, type AcpMcpServerStdio, type AcpPermissionOutcome, typ
 import type { StateStore } from "./store.js";
 import type { WorktreeManager } from "./worktrees.js";
 import { AGENT_COLORS, AGENT_ID_RE, debounce, isInside, nowIso, randomId, realpathLoose, toPosix, truncateTail } from "./util.js";
-import { revParse } from "./git.js";
+import { git, revParse, snapshotWorktree } from "./git.js";
 import { commandFromRawInput, evaluatePermission, isRisky, matchesAny, mergePolicy, pathFromRawInput, urlFromRawInput, validatePolicy } from "./policy.js";
 import { addSecret, redact } from "./redact.js";
 
 const MAX_TOOL_CALLS = 30;
 const MAX_GUIDANCE = 4000;
 const MAX_MESSAGE_TAIL = 4000;
+
+/** Checkpoints kept per agent (one per turn). */
+export const CHECKPOINTS_KEPT = 30;
 
 export interface AgentManagerDeps {
   store: StateStore;
@@ -109,6 +112,9 @@ export class AgentManager {
     this.require(id);
     await this.stop(id);
     if (!keepWorktree) await this.deps.worktrees.remove(id, { deleteBranch: true });
+    // Its checkpoints go too.
+    const refs = (await git(this.store.repoRoot, ["for-each-ref", "--format=%(refname)", `refs/synapse/checkpoints/${id}/`]).catch(() => "")).split("\n").filter(Boolean);
+    for (const ref of refs) await git(this.store.repoRoot, ["update-ref", "-d", ref]).catch(() => {});
     this.store.removeAgent(id);
   }
 
@@ -204,15 +210,55 @@ export class AgentManager {
     const pending = agent.guidance ?? [];
     const full = pending.length ? `${text}\n\n${guidanceBlock(pending)}` : text;
     this.store.updateAgent(id, { status: "working", turn: { prompt: full, startedAt: nowIso() }, guidance: undefined, lastMessage: "", plan: undefined, error: undefined });
-    this.store.emitEvent("agent.output", { agentId: id, kind: "turn", text: `> ${full}` });
+    this.store.emitEvent("agent.output", { agentId: id, kind: "turn", phase: "prompt", text: `> ${full}` });
     this.runTurn(id, proc, full);
   }
 
+  /** Turns taking their checkpoint, and those cancelled meanwhile. */
+  private readonly startingTurns = new Set<string>();
+  private readonly cancelledBeforeStart = new Set<string>();
+
   private runTurn(id: string, proc: AcpAgentProcess, text: string): void {
-    proc.prompt(text).then(
-      (stopReason) => this.endTurn(id, proc, stopReason),
-      (err: Error) => this.endTurn(id, proc, "error", err.message),
-    );
+    // A checkpoint first, so the person can rewind the agent to before this turn.
+    this.startingTurns.add(id);
+    this.checkpoint(id)
+      .catch((err: Error) => this.deps.log(`checkpoint for ${id} failed: ${err.message}`))
+      .then(() => {
+        this.startingTurns.delete(id);
+        if (this.cancelledBeforeStart.delete(id)) return "cancelled";
+        return proc.prompt(text);
+      })
+      .then(
+        (stopReason) => this.endTurn(id, proc, stopReason),
+        (err: Error) => this.endTurn(id, proc, "error", err.message),
+      );
+  }
+
+  /**
+   * Snapshots the agent's worktree (untracked files included) and keeps it
+   * under refs/synapse/checkpoints/<agent>/ (the newest CHECKPOINTS_KEPT).
+   */
+  private async checkpoint(id: string): Promise<void> {
+    const a = this.store.getAgent(id);
+    if (!a) return;
+    const sha = await snapshotWorktree(a.worktree.path, `synapse checkpoint before a turn of ${id}`);
+    const repo = this.store.repoRoot;
+    const prefix = `refs/synapse/checkpoints/${id}/`;
+    await git(repo, ["update-ref", `${prefix}${Date.now().toString().padStart(15, "0")}`, sha]);
+    const refs = (await git(repo, ["for-each-ref", "--format=%(refname)", prefix])).split("\n").filter(Boolean).sort();
+    for (const old of refs.slice(0, Math.max(0, refs.length - CHECKPOINTS_KEPT))) await git(repo, ["update-ref", "-d", old]);
+    this.store.emitEvent("agent.output", { agentId: id, kind: "turn", phase: "checkpoint", checkpoint: sha, text: `checkpoint ${sha.slice(0, 10)}` });
+  }
+
+  /** Puts the agent's worktree back to a checkpoint. Only between turns. */
+  async rewind(id: string, checkpoint: string, label: string): Promise<AgentState> {
+    const a = this.require(id);
+    if (a.status === "working" || a.status === "awaiting-approval") throw new RpcError(ErrorCodes.Conflict, `${a.name} is in a turn; stop it first`);
+    if (!/^[0-9a-f]{40}$/.test(checkpoint)) throw new RpcError(ErrorCodes.InvalidParams, "Not a checkpoint");
+    await this.deps.worktrees.resetTo(id, checkpoint);
+    this.store.emitEvent("agent.output", { agentId: id, kind: "turn", phase: "rewind", text: label });
+    this.deps.onFilesChanged(id);
+    return this.store.getAgent(id)!;
   }
 
   /**
@@ -233,7 +279,7 @@ export class AgentManager {
       return this.store.getAgent(id)!;
     }
     const next = this.store.updateAgent(id, { guidance: [...(agent.guidance ?? []), { text: t, mode, at: nowIso() }] })!;
-    this.store.emitEvent("agent.output", { agentId: id, kind: "turn", text: `guidance (${mode === "now" ? "interrupting" : "after this turn"}): ${t}` });
+    this.store.emitEvent("agent.output", { agentId: id, kind: "turn", phase: "guidance", mode, guidance: t, text: `guidance (${mode === "now" ? "interrupting" : "after this turn"}): ${t}` });
     if (mode === "now") this.cancel(id, true);
     return next;
   }
@@ -287,7 +333,7 @@ export class AgentManager {
       turn: agent.turn ? { ...agent.turn, endedAt: nowIso(), stopReason } : undefined,
       error,
     });
-    this.store.emitEvent("agent.output", { agentId: id, kind: "turn", text: `turn ended: ${stopReason}${error ? ` (${error})` : ""}` });
+    this.store.emitEvent("agent.output", { agentId: id, kind: "turn", phase: "end", stopReason, error, text: `turn ended: ${stopReason}${error ? ` (${error})` : ""}` });
     this.deps.onFilesChanged(id);
     this.releaseWaiters(id);
     if (this.takingOver.has(id)) return;
@@ -302,7 +348,7 @@ export class AgentManager {
         error: undefined,
         turn: { prompt: turn?.prompt ?? text, startedAt: turn?.startedAt ?? nowIso(), steered: (turn?.steered ?? 0) + 1 },
       });
-      this.store.emitEvent("agent.output", { agentId: id, kind: "turn", text: `> ${text}` });
+      this.store.emitEvent("agent.output", { agentId: id, kind: "turn", phase: "followup", text: `> ${text}` });
       this.runTurn(id, proc, text);
       return;
     }
@@ -313,6 +359,8 @@ export class AgentManager {
   cancel(id: string, keepGuidance = false): void {
     const agent = this.require(id);
     if (!keepGuidance && agent.guidance?.length) this.store.updateAgent(id, { guidance: undefined });
+    // A turn still taking its checkpoint has not reached the agent: stop it there.
+    if (this.startingTurns.has(id)) this.cancelledBeforeStart.add(id);
     this.procs.get(id)?.cancel();
     this.cancelPermissions(id);
   }
@@ -546,7 +594,7 @@ export class AgentManager {
         if (this.toolInputs.size > 500) this.toolInputs.delete(this.toolInputs.keys().next().value!);
         this.store.updateAgent(agentId, { toolCalls: calls.slice(-MAX_TOOL_CALLS) });
         if (!prev || prev.status !== next.status) {
-          this.store.emitEvent("agent.output", { agentId, kind: "tool", text: `${next.status}: ${next.title}` });
+          this.store.emitEvent("agent.output", { agentId, kind: "tool", tool: next, text: `${next.status}: ${next.title}` });
         }
         if (next.status === "completed" && (next.kind === "edit" || next.kind === "delete" || next.kind === "move" || next.kind === "execute")) {
           this.deps.onFilesChanged(agentId);

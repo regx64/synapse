@@ -1,0 +1,113 @@
+diff --git a/src/vs/base/node/nls.ts b/src/vs/base/node/nls.ts
+index 2015d2e0..a3db0bf4 100644
+--- a/src/vs/base/node/nls.ts
++++ b/src/vs/base/node/nls.ts
+@@ -58,7 +58,7 @@ export async function resolveNLSConfiguration({ userLocale, osLocale, userDataPa
+ 	}
+ 
+ 	try {
+-		const languagePacks = await getLanguagePackConfigurations(userDataPath);
++		const languagePacks = await getLanguagePackConfigurations(userDataPath, nlsMetadataPath);
+ 		if (!languagePacks) {
+ 			return defaultNLSConfiguration(userLocale, osLocale, nlsMetadataPath);
+ 		}
+@@ -173,12 +173,41 @@ export async function resolveNLSConfiguration({ userLocale, osLocale, userDataPa
+  *
+  * The file is updated whenever a new language pack is installed or removed.
+  */
+-async function getLanguagePackConfigurations(userDataPath: string): Promise<ILanguagePacks | undefined> {
++async function getLanguagePackConfigurations(userDataPath: string, nlsMetadataPath: string): Promise<ILanguagePacks | undefined> {
+ 	const configFile = join(userDataPath, 'languagepacks.json');
++	let installed: ILanguagePacks | undefined;
+ 	try {
+-		return JSON.parse(await promises.readFile(configFile, 'utf-8'));
++		installed = JSON.parse(await promises.readFile(configFile, 'utf-8'));
+ 	} catch (err) {
+-		return undefined; // Do nothing. If we can't read the file we have no language pack config.
++		installed = undefined; // Do nothing. If we can't read the file we have no language pack config.
++	}
++	// Synapse: language packs that ship with the app, for languages no installed pack covers.
++	const builtin = await getBuiltinLanguagePacks(nlsMetadataPath);
++	return builtin ? { ...builtin, ...installed } : installed;
++}
++
++/**
++ * Synapse: language packs built into the app (`synapse-languagepacks.json`
++ * next to `nls.messages.json`, written at build time). Translation paths in
++ * the file are relative to that folder.
++ */
++export async function getBuiltinLanguagePacks(nlsMetadataPath: string): Promise<ILanguagePacks | undefined> {
++	try {
++		const packs: ILanguagePacks = JSON.parse(await promises.readFile(join(nlsMetadataPath, 'synapse-languagepacks.json'), 'utf-8'));
++		const result: ILanguagePacks = {};
++		for (const [language, pack] of Object.entries(packs)) {
++			if (!pack) {
++				continue;
++			}
++			const translations: Record<string, string | undefined> = {};
++			for (const [id, path] of Object.entries(pack.translations)) {
++				translations[id] = path ? join(nlsMetadataPath, path) : undefined;
++			}
++			result[language] = { ...pack, translations };
++		}
++		return result;
++	} catch (err) {
++		return undefined;
+ 	}
+ }
+ 
+diff --git a/src/vs/platform/languagePacks/node/languagePacks.ts b/src/vs/platform/languagePacks/node/languagePacks.ts
+index 9527de9f..359d1098 100644
+--- a/src/vs/platform/languagePacks/node/languagePacks.ts
++++ b/src/vs/platform/languagePacks/node/languagePacks.ts
+@@ -11,6 +11,7 @@ import { Disposable } from '../../../base/common/lifecycle.js';
+ import { Schemas } from '../../../base/common/network.js';
+ import { join } from '../../../base/common/path.js';
+ import { Promises } from '../../../base/node/pfs.js';
++import { getBuiltinLanguagePacks } from '../../../base/node/nls.js';
+ import { INativeEnvironmentService } from '../../environment/common/environment.js';
+ import { IExtensionGalleryService, IExtensionIdentifier, IExtensionManagementService, ILocalExtension } from '../../extensionManagement/common/extensionManagement.js';
+ import { areSameExtensions } from '../../extensionManagement/common/extensionManagementUtil.js';
+@@ -105,6 +106,7 @@ class LanguagePacksCache extends Disposable {
+ 	private languagePacksFilePath: string;
+ 	private languagePacksFileLimiter: Queue<any>;
+ 	private initializedCache: boolean | undefined;
++	private readonly appOutPath: string;
+ 
+ 	constructor(
+ 		@INativeEnvironmentService environmentService: INativeEnvironmentService,
+@@ -113,15 +115,29 @@ class LanguagePacksCache extends Disposable {
+ 		super();
+ 		this.languagePacksFilePath = join(environmentService.userDataPath, 'languagepacks.json');
+ 		this.languagePacksFileLimiter = new Queue();
++		this.appOutPath = join(environmentService.appRoot, 'out');
+ 	}
+ 
+ 	getLanguagePacks(): Promise<{ [language: string]: ILanguagePack }> {
+ 		// if queue is not empty, fetch from disk
+-		if (this.languagePacksFileLimiter.size || !this.initializedCache) {
+-			return this.withLanguagePacks()
+-				.then(() => this.languagePacks);
+-		}
+-		return Promise.resolve(this.languagePacks);
++		const packs = (this.languagePacksFileLimiter.size || !this.initializedCache)
++			? this.withLanguagePacks().then(() => this.languagePacks)
++			: Promise.resolve(this.languagePacks);
++		// Synapse: add the language packs built into the app, for languages no installed pack covers.
++		return Promise.all([packs, getBuiltinLanguagePacks(this.appOutPath)]).then(([installed, builtin]) => {
++			const merged: { [language: string]: ILanguagePack } = {};
++			for (const [language, pack] of Object.entries(builtin ?? {})) {
++				if (pack) {
++					merged[language] = {
++						hash: pack.hash,
++						label: pack.label,
++						extensions: pack.extensions.map(e => ({ extensionIdentifier: { id: e.extensionIdentifier.id, uuid: e.extensionIdentifier.uuid }, version: e.version })),
++						translations: Object.fromEntries(Object.entries(pack.translations).filter((e): e is [string, string] => typeof e[1] === 'string')),
++					};
++				}
++			}
++			return { ...merged, ...installed };
++		});
+ 	}
+ 
+ 	update(extensions: ILocalExtension[]): Promise<{ [language: string]: ILanguagePack }> {

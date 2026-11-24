@@ -1,6 +1,6 @@
 {
-  "$comment": "Core patches to microsoft/vscode, applied in order at build time by build/apply-patches.mjs. Budget: 20 (plan, 'Running the fork' step 3). Each entry needs an owner and a reason. Prefer synapse-core, then the built-in extension, and only then a patch.",
-  "budget": 20,
+  "$comment": "Core patches to microsoft/vscode, applied in order at build time by build/apply-patches.mjs. Budget: 60 (raised from 20 for the UI redesign, which restructures the workbench; plan, 'Running the fork' step 3 and gate G3). Each entry needs an owner and a reason. Prefer synapse-core, then the built-in extension, and only then a patch.",
+  "budget": 60,
   "patches": [
     {
       "file": "0001-publisher-from-product.patch",
@@ -12,6 +12,18 @@
       "file": "0002-remove-builtin-copilot.patch",
       "owner": "@regx64",
       "reason": "Code - OSS 1.147 builds the GitHub Copilot extension, the Copilot CLI runtime and SDK native packages, and a `copilot` CLI shim into every app from its gulp build; an extension cannot stop that. The patch drops them from the desktop build and makes chat.disableAIFeatures default to true, so the Copilot-based chat setup and the agent host (which needs the SDK) stay off.",
+      "since": "1.147.0"
+    },
+    {
+      "file": "0003-synapse-workbench.patch",
+      "owner": "@regx64",
+      "reason": "The redesigned UI needs what the extension API cannot give: agent status in the title bar (a custom title-bar widget), desktop notifications when the window is in the background (the extension host has no access to the OS), the Synapse fonts in the workbench itself, and hiding the agent column when the window gets narrow (layout control). One new workbench contribution plus one import line; the extension drives it through two internal commands.",
+      "since": "1.147.0"
+    },
+    {
+      "file": "0004-builtin-language-packs.patch",
+      "owner": "@regx64",
+      "reason": "Synapse ships Korean. Code - OSS only uses language packs a user installs (they are registered in the user's languagepacks.json at install time), so a pack built into the app would be ignored. The patch also reads out/synapse-languagepacks.json, written at build time, for languages no installed pack covers.",
       "since": "1.147.0"
     }
   ]

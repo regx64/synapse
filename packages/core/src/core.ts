@@ -20,6 +20,12 @@ import { OwnershipService } from "./ownership.js";
 import { listPresets } from "./presets.js";
 import { ReviewService } from "./review.js";
 import { StateStore } from "./store.js";
+import { TranscriptStore } from "./transcripts.js";
+import { tellAboutConflict } from "./conflict-help.js";
+import { AgentTestService } from "./agent-tests.js";
+import { GoalService } from "./goals.js";
+import { MergeQueue } from "./merge-queue.js";
+import { AgentReviewService } from "./agent-review.js";
 import { debounce, KeyedSerializer } from "./util.js";
 import { WorktreeManager } from "./worktrees.js";
 
@@ -56,6 +62,11 @@ export class SynapseCore {
   readonly agents: AgentManager;
   readonly reviews: ReviewService;
   readonly comments: CommentService;
+  readonly transcripts: TranscriptStore;
+  readonly agentTests: AgentTestService;
+  readonly goals: GoalService;
+  readonly mergeQueue: MergeQueue;
+  readonly agentReviews: AgentReviewService;
   readonly team: TeamService;
   readonly collab: CollabService;
   /** Where the API is served; set by serve(). Agents' MCP servers connect back here. */
@@ -86,7 +97,16 @@ export class SynapseCore {
       onFilesChanged: (id) => this.scheduleRefresh(id),
       log: this.log,
       defaultPolicy: () => this.defaultPolicy(),
-      onTurnEnd: (id, stopReason, error) => void this.collab.onTurnEnd(id, stopReason, error).catch((e: Error) => this.log(`task update failed: ${e.message}`)),
+      onTurnEnd: (id, stopReason, error) => {
+        void this.collab
+          .onTurnEnd(id, stopReason, error)
+          .catch((e: Error) => this.log(`task update failed: ${e.message}`))
+          .then(() => this.goals.onTurnEnd(id, stopReason, error))
+          .then(() => this.agentReviews.onTurnEnd(id, stopReason, error))
+          .then(() => this.agentTests.onTurnEnd(id, stopReason))
+          .then(() => this.mergeQueue.kick())
+          .catch((e: Error) => this.log(`tests for ${id} failed to run: ${e.message}`));
+      },
       mcpServerFor: (id) => this.mcpServerFor(id),
     });
     this.collab = new CollabService({
@@ -96,7 +116,11 @@ export class SynapseCore {
       refreshOwnership: (id) => this.ownership.refresh(id),
       log: this.log,
     });
+    this.transcripts = new TranscriptStore(this.store);
+    this.agentTests = new AgentTestService({ store: this.store, agents: this.agents, config: () => this.config, refreshOwnership: (id) => this.ownership.refresh(id), log: this.log });
+    this.goals = new GoalService({ store: this.store, agents: this.agents, collab: this.collab });
     this.comments = new CommentService({ store: this.store, agents: this.agents, collab: this.collab, ownership: this.ownership });
+    this.agentReviews = new AgentReviewService(this.store, this.agents, this.comments);
     this.team = new TeamService({ store: this.store, config: () => this.config, log: this.log, onPeersChanged: () => this.scheduleConflictCheck() });
     this.reviews = new ReviewService({
       store: this.store,
@@ -106,6 +130,7 @@ export class SynapseCore {
       resetAgent: (id, ref) => this.agents.reset(id, ref),
       log: this.log,
     });
+    this.mergeQueue = new MergeQueue({ store: this.store, reviews: this.reviews, collab: this.collab, log: this.log });
   }
 
   static async open(opts: CoreOptions): Promise<SynapseCore> {
@@ -165,6 +190,26 @@ export class SynapseCore {
 
   async reloadConfig(): Promise<void> {
     this.config = await loadConfig(this.repoRoot);
+  }
+
+  /** Team mode on for this clone: `.synapse/config.json` gets `team.enabled` (and the name and remote, when given). */
+  private async enableTeam(name?: string, remote?: string): Promise<ReturnType<TeamService["status"]>> {
+    const file = path.join(this.repoRoot, ".synapse", "config.json");
+    let local: Record<string, unknown> = {};
+    try {
+      local = JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>;
+    } catch {
+      /* no local config yet */
+    }
+    const team: Record<string, unknown> = { ...((local.team as Record<string, unknown> | undefined) ?? {}), enabled: true };
+    if (name?.trim()) team.name = name.trim();
+    if (remote?.trim()) team.remote = remote.trim();
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify({ ...local, team }, null, 2) + "\n");
+    await this.reloadConfig();
+    this.team.stop();
+    await this.team.start();
+    return this.team.sync();
   }
 
   scheduleRefresh(agentId: string): void {
@@ -237,11 +282,31 @@ export class SynapseCore {
       "agents.restart": (p) => this.agents.restart(req(p, "id")),
       "agents.steer": (p) => this.agents.steer(req(p, "id"), req(p, "text"), p.mode ?? "next"),
       "agents.diff": (p) => this.comments.diff(req(p, "id"), p.path),
+      "agents.test": (p) => this.agentTests.runNow(req(p, "id")),
+      "agents.rewind": async (p) => {
+        const entry = this.transcripts.list(req(p, "id")).find((e) => e.n === p.n);
+        if (!entry?.checkpoint) throw new RpcError(ErrorCodes.NotFound, "No checkpoint before that turn (it may be older than the 30 kept)");
+        return this.agents.rewind(p.id, entry.checkpoint, `before turn ${p.n}`);
+      },
+      "agents.transcript": (p) => {
+        if (!this.store.getAgent(req(p, "id"))) throw new RpcError(ErrorCodes.NotFound, `No agent "${p.id}"`);
+        return this.transcripts.list(p.id, p.from, p.limit);
+      },
       "comments.list": (p) => this.comments.list(p?.agentId),
       "comments.add": (p) => this.comments.add(p),
       "team.status": () => this.team.status(),
       "team.sync": () => this.team.sync(),
+      "team.enable": (p) => this.enableTeam(p?.name, p?.remote),
       "team.leave": () => this.team.leave(),
+      "team.adopt": async (p) => {
+        if (this.team.role() !== "editor") throw new RpcError(ErrorCodes.Unauthorized, "Viewers in team mode cannot continue teammates' work");
+        const peer = this.team.peerAgent(req(p, "from"));
+        if (!peer) throw new RpcError(ErrorCodes.NotFound, `No teammate's agent "${p.from}" (sync the team first)`);
+        const r = await this.collab.adoptFromTeammate(peer, req(p, "to"), p.note);
+        this.team.addClaim({ byAgent: r.to.id, agent: peer.id, task: peer.task });
+        return r;
+      },
+      "team.dismissClaim": (p) => this.team.dismissClaim(req(p, "id")),
       "comments.resolve": (p) => this.comments.resolve(req(p, "id"), p.status),
       "agents.takeover": (p) => this.collab.takeover(req(p, "from"), req(p, "to"), { taskId: p.taskId, note: p.note }),
       "agents.prompt": (p) => {
@@ -270,6 +335,7 @@ export class SynapseCore {
       "ownership.forFile": (p) => this.ownership.markersFor(req(p, "path"), p.content),
       "conflicts.list": () => this.store.getConflicts(),
       "conflicts.check": () => this.checkConflicts(),
+      "conflicts.tell": (p) => tellAboutConflict(this.store, this.agents, req(p, "id"), req(p, "agentId")),
       "approvals.list": (p) => this.store.listApprovals(p?.all),
       "approvals.resolve": (p) => this.agents.resolveApproval(req(p, "id"), p.optionId, p.reject),
       "review.prepare": (p) => this.reviews.prepare(p?.agents, p?.runTests ?? true),
@@ -300,6 +366,16 @@ export class SynapseCore {
       },
       "tasks.start": (p) => this.collab.startTask(req(p, "id")),
       "tasks.setStatus": (p) => this.collab.setStatus(req(p, "id"), req(p, "status")),
+      "comments.tell": (p) => this.comments.tell(req(p, "id")),
+      "agents.review": (p) => this.agentReviews.start(req(p, "reviewerId"), req(p, "targetId")),
+      "queue.add": (p) => this.mergeQueue.add(req(p, "agentId"), p.taskId),
+      "queue.remove": (p) => this.mergeQueue.remove(req(p, "id")),
+      "queue.retry": (p) => this.mergeQueue.retry(req(p, "id")),
+      "goals.split": (p) => this.goals.split(req(p, "goal"), req(p, "agentId")),
+      "goals.accept": (p) => this.goals.accept(req(p, "id"), p.tasks, { autoStart: p.autoStart, planFirst: p.planFirst }),
+      "goals.discard": (p) => this.goals.discard(req(p, "id")),
+      "tasks.approvePlan": (p) => this.collab.approvePlan(req(p, "id"), p.plan),
+      "tasks.revisePlan": (p) => this.collab.revisePlan(req(p, "id"), req(p, "feedback")),
       "messages.list": (p) => this.collab.listMessages(p?.agentId),
       "messages.send": (p) => this.collab.send("human", { ...p, to: req(p, "to") }),
       "messages.release": (p) => this.collab.release(req(p, "id")),
@@ -358,6 +434,7 @@ export class SynapseCore {
     this.scheduleConflictCheck.cancel();
     await this.agents.shutdown();
     this.store.flush();
+    this.transcripts.flush();
   }
 }
 

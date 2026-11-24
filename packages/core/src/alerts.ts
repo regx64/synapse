@@ -57,6 +57,19 @@ export function computeAlerts(s: Omit<CoreState, "alerts">, now = Date.now()): A
   }
   for (const t of s.tasks) {
     if (t.status !== "review") continue;
+    if (t.plan?.state === "proposed") {
+      out.push({
+        id: `plan-review:${t.id}`,
+        kind: "plan-review",
+        level: "action",
+        title: `${t.id} plan to approve: ${t.title}`,
+        detail: t.plan.changedFiles ? "the agent changed files while planning" : undefined,
+        agentId: t.agentId,
+        ref: t.id,
+        at: t.endedAt ?? t.updatedAt,
+      });
+      continue;
+    }
     out.push({
       id: `task-review:${t.id}`,
       kind: "task-review",
@@ -80,6 +93,49 @@ export function computeAlerts(s: Omit<CoreState, "alerts">, now = Date.now()): A
       agentId: last.agentId,
       ref: last.id,
       at: last.at,
+    });
+  }
+  for (const e of s.mergeQueue ?? []) {
+    if (e.status !== "failed") continue;
+    out.push({ id: `queue-failed:${e.id}`, kind: "queue-failed", level: "action", title: `${name(e.agentId)}'s work was not merged`, detail: e.error, agentId: e.agentId, ref: e.id, at: e.updatedAt });
+  }
+  for (const g of s.goals ?? []) {
+    if (g.status !== "proposed" && g.status !== "failed") continue;
+    out.push({
+      id: `goal-split:${g.id}`,
+      kind: "goal-split",
+      level: "action",
+      title: g.status === "proposed" ? `${name(g.agentId)} split a goal into ${g.tasks.length} tasks` : `${name(g.agentId)} could not split a goal`,
+      detail: g.status === "failed" ? g.error : g.goal.slice(0, 200),
+      agentId: g.agentId,
+      ref: g.id,
+      at: g.updatedAt,
+    });
+  }
+  for (const a of s.agents) {
+    if (a.tests?.status !== "failed") continue;
+    out.push({
+      id: `tests-failed:${a.id}`,
+      kind: "tests-failed",
+      level: "action",
+      title: `${a.name}'s tests failed`,
+      detail: (a.tests.output ?? "").trimEnd().split("\n").slice(-3).join("\n"),
+      agentId: a.id,
+      ref: a.id,
+      at: a.tests.startedAt,
+    });
+  }
+  for (const c of s.team?.claimsOnMe ?? []) {
+    const own = c.agent.slice(c.agent.indexOf("/") + 1);
+    out.push({
+      id: `team-claim:${c.id}`,
+      kind: "team-claim",
+      level: "action",
+      title: `${c.by} continued ${name(own)}'s work${c.task ? ` on "${c.task}"` : ""}`,
+      detail: `in ${c.by}'s ${c.byAgent}. Reset ${name(own)} so you two don't work on the same changes, or dismiss.`,
+      agentId: own,
+      ref: c.id,
+      at: c.at,
     });
   }
   const rank = (a: Alert) => (a.level === "urgent" ? 0 : 1);

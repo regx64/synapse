@@ -42,6 +42,8 @@ failing tests), `-32004` not found.
 | `team.status` | – | `TeamState`: whether team mode is on, who you are, teammates and their agents |
 | `team.sync` | – | `TeamState`. Publishes your agents to the git remote and fetches teammates'; their agents then take part in conflict detection |
 | `team.leave` | – | `TeamState`. Removes everything you published |
+| `team.adopt` | `{ from: "@person/agent", to, note? }` | `TakeoverResult`. One of your agents continues a teammate's agent's published work; the teammate is told through a claim. Editors only |
+| `team.dismissClaim` | `{ id }` | `TeamState` |
 | `comments.resolve` | `{ id, status? }` | `CodeComment` |
 | `agents.takeover` | `{ from, to, taskId?, note? }` | `TakeoverResult`. `to` continues `from`'s unfinished work: `from` is stopped, its changes move into `to`'s worktree, the task is reassigned, `to` is briefed |
 | `agents.reset` | `{ id, ref? }` | `AgentState` (worktree reset to the base, changes discarded) |

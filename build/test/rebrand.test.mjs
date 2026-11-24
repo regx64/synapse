@@ -46,3 +46,19 @@ test("rewrites a built app's messages and built-in extension strings, not Synaps
   assert.match(fs.readFileSync(path.join(app, "extensions/synapse-collab/package.nls.json"), "utf8"), /VS Code/);
   assert.deepEqual(stats, { messages: 2, extensionStrings: 3 });
 });
+
+test("renames the product in a built-in language pack, keeping the marketplace and the web edition", () => {
+  assert.equal(rebrandText("VS Code를 다시 시작하세요.", "Synapse"), "Synapse를 다시 시작하세요.");
+  assert.equal(rebrandText("VS Code 마켓플레이스에서 확장을 찾으세요.", "Synapse"), "VS Code 마켓플레이스에서 확장을 찾으세요.");
+  assert.equal(rebrandText("웹용 VS Code에서는 사용할 수 없습니다.", "Synapse"), "웹용 VS Code에서는 사용할 수 없습니다.");
+  const app = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "synapse-rebrand-")), "resources", "app");
+  const w = (f, s) => (fs.mkdirSync(path.dirname(path.join(app, f)), { recursive: true }), fs.writeFileSync(path.join(app, f), s));
+  w("out/nls.messages.json", "[]");
+  w("extensions/vscode-language-pack-ko/package.json", JSON.stringify({ displayName: "Korean Language Pack for Visual Studio Code", contributes: { localizations: [{ languageId: "ko", translations: [{ id: "vscode", path: "./translations/main.i18n.json" }] }] } }));
+  w("extensions/vscode-language-pack-ko/translations/main.i18n.json", JSON.stringify({ contents: { "vs/a": { k: "VS Code가 종료되었습니다.", m: "Visual Studio Code 마켓플레이스" } } }));
+  const stats = rebrandApp(app, "Synapse");
+  const tr = JSON.parse(fs.readFileSync(path.join(app, "extensions/vscode-language-pack-ko/translations/main.i18n.json"), "utf8"));
+  assert.deepEqual(tr.contents["vs/a"], { k: "Synapse가 종료되었습니다.", m: "Visual Studio Code 마켓플레이스" });
+  assert.equal(JSON.parse(fs.readFileSync(path.join(app, "extensions/vscode-language-pack-ko/package.json"), "utf8")).displayName, "Korean Language Pack for Synapse");
+  assert.equal(stats.translations, 1);
+});

@@ -1,0 +1,183 @@
+/*
+ * Synapse UI kit, shared by every Synapse webview (home, agents, agent detail,
+ * live changes, review). Colors come from the active color theme: Synapse
+ * Dark sets them to the values in docs/ui-style.md; other themes still work.
+ */
+@font-face {
+  font-family: "Pretendard";
+  src: url("../fonts/PretendardVariable.woff2") format("woff2");
+  font-weight: 45 920;
+  font-display: swap;
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("../fonts/JetBrainsMono-latin.woff2") format("woff2");
+  font-weight: 100 800;
+  font-display: swap;
+}
+
+:root {
+  --sy-font: Pretendard, var(--vscode-font-family), system-ui, sans-serif;
+  --sy-mono: "JetBrains Mono", var(--vscode-editor-font-family), ui-monospace, monospace;
+  --sy-fg: var(--vscode-foreground);
+  --sy-fg2: var(--vscode-descriptionForeground);
+  --sy-muted: var(--vscode-synapse-mutedForeground, var(--vscode-descriptionForeground));
+  --sy-subtle: var(--vscode-synapse-subtleForeground, var(--vscode-descriptionForeground));
+  --sy-bg: var(--vscode-editor-background);
+  --sy-side: var(--vscode-sideBar-background, var(--vscode-editor-background));
+  --sy-card: var(--vscode-synapse-cardBackground, var(--vscode-editorWidget-background));
+  --sy-line: var(--vscode-synapse-cardBorder, var(--vscode-widget-border, rgba(128, 128, 128, 0.3)));
+  --sy-raised: var(--vscode-synapse-raisedBackground, var(--vscode-list-hoverBackground));
+  --sy-hover: var(--vscode-list-hoverBackground);
+  --sy-input: var(--vscode-input-background);
+  --sy-input-line: var(--vscode-input-border, var(--sy-line));
+  --sy-focus: var(--vscode-focusBorder);
+  --sy-working: var(--vscode-synapse-statusWorking, var(--vscode-foreground));
+  --sy-needs: var(--vscode-synapse-statusNeedsYou, var(--vscode-editorWarning-foreground));
+  --sy-review: var(--vscode-synapse-statusReview, var(--vscode-testing-iconPassed));
+  --sy-error: var(--vscode-synapse-statusError, var(--vscode-errorForeground));
+  --sy-idle: var(--vscode-synapse-statusIdle, var(--vscode-descriptionForeground));
+  --sy-add: var(--vscode-diffEditor-insertedLineBackground, rgba(110, 231, 160, 0.09));
+  --sy-del: var(--vscode-diffEditor-removedLineBackground, rgba(248, 113, 113, 0.09));
+  --sy-radius: 6px;
+  --sy-radius-card: 9px;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  font-family: var(--sy-font);
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--sy-fg);
+  background: transparent;
+  -webkit-font-smoothing: antialiased;
+}
+h1, h2, h3, p { margin: 0; }
+h1 { font-size: 20px; font-weight: 650; letter-spacing: -0.01em; }
+h2 { font-size: 13px; font-weight: 600; }
+code, .mono { font-family: var(--sy-mono); font-size: 12px; }
+a { color: var(--vscode-textLink-foreground); }
+a:hover { color: var(--vscode-textLink-activeForeground); }
+:focus-visible { outline: 2px solid var(--sy-focus); outline-offset: 1px; }
+::placeholder { color: var(--sy-subtle); }
+
+.muted { color: var(--sy-muted); }
+.fg2 { color: var(--sy-fg2); }
+.small { font-size: 12px; }
+.tiny { font-size: 11px; }
+.ell { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.col { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.wrap { flex-wrap: wrap; }
+.spacer { flex: 1; }
+.hidden { display: none !important; }
+
+/* Buttons */
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; margin: 0; cursor: pointer; text-align: left; }
+button:disabled { cursor: default; opacity: 0.5; }
+.btn {
+  height: 28px; padding: 0 11px; border-radius: var(--sy-radius);
+  border: 1px solid var(--sy-input-line);
+  background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground);
+  font-size: 12.5px; font-weight: 500; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; flex: none;
+}
+.btn:hover:not(:disabled) { background: var(--vscode-button-secondaryHoverBackground); }
+.btn.primary { background: var(--vscode-button-background); color: var(--vscode-button-foreground); border-color: var(--vscode-button-background); }
+.btn.primary:hover:not(:disabled) { background: var(--vscode-button-hoverBackground); border-color: var(--vscode-button-hoverBackground); }
+.btn.ghost { background: transparent; border-color: transparent; color: var(--sy-fg2); }
+.btn.ghost:hover:not(:disabled) { background: var(--sy-hover); color: var(--sy-fg); }
+.btn.sm { height: 24px; padding: 0 8px; font-size: 12px; }
+.icon-btn { width: 28px; height: 28px; border-radius: var(--sy-radius); display: inline-flex; align-items: center; justify-content: center; color: var(--sy-fg2); flex: none; }
+.icon-btn:hover:not(:disabled) { background: var(--sy-hover); color: var(--sy-fg); }
+.link { color: var(--vscode-textLink-foreground); text-decoration: underline; text-underline-offset: 2px; font-size: 12px; }
+.link:hover { color: var(--vscode-textLink-activeForeground); }
+
+/* Segmented control */
+.seg { display: inline-flex; padding: 2px; border: 1px solid var(--sy-line); border-radius: 7px; background: var(--sy-input); }
+.seg button { height: 24px; padding: 0 10px; border-radius: 5px; color: var(--sy-fg2); font-size: 12px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; white-space: nowrap; }
+.seg button:hover { color: var(--sy-fg); }
+.seg button[aria-pressed="true"] { background: var(--sy-raised); color: var(--sy-fg); box-shadow: 0 0 0 1px var(--sy-line) inset; }
+.seg.full { display: flex; }
+.seg.full button { flex: 1; }
+
+/* Underlined tabs */
+.tabs { display: flex; gap: 16px; border-bottom: 1px solid var(--sy-line); overflow-x: auto; }
+.tabs button { height: 32px; font-size: 12.5px; color: var(--sy-muted); display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.tabs button:hover { color: var(--sy-fg); }
+.tabs button[aria-current="true"] { color: var(--sy-fg); box-shadow: inset 0 -2px 0 var(--sy-fg); }
+
+/* Cards */
+.card { border: 1px solid var(--sy-line); background: var(--sy-card); border-radius: var(--sy-radius-card); min-width: 0; }
+button.card { width: 100%; }
+button.card:hover { border-color: var(--sy-input-line); }
+button.card[aria-current="true"] { border-color: var(--sy-fg2); }
+.card-pad { padding: 12px 14px; }
+
+/* Dots, status, badges, pills */
+.dot { width: 8px; height: 8px; border-radius: 50%; flex: none; display: inline-block; }
+.dot.sm { width: 6px; height: 6px; }
+.dot.lg { width: 10px; height: 10px; }
+.status { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; white-space: nowrap; }
+.st-working { color: var(--sy-working); }
+.st-needs { color: var(--sy-needs); }
+.st-review { color: var(--sy-review); }
+.st-error { color: var(--sy-error); }
+.st-idle, .st-stopped { color: var(--sy-idle); }
+.status .dot { background: currentColor; width: 6px; height: 6px; }
+.count { font-size: 11px; line-height: 17px; padding: 0 6px; border-radius: 9px; font-weight: 700; background: var(--sy-needs); color: var(--vscode-editor-background); }
+.pill { font-size: 11px; padding: 0 7px; line-height: 18px; border-radius: 9px; border: 1px solid var(--sy-input-line); color: var(--sy-fg2); white-space: nowrap; flex: none; }
+.pill.review { color: var(--sy-review); border-color: color-mix(in srgb, var(--sy-review) 45%, transparent); }
+.pill.needs { color: var(--sy-needs); border-color: color-mix(in srgb, var(--sy-needs) 45%, transparent); }
+.pill.error { color: var(--sy-error); border-color: color-mix(in srgb, var(--sy-error) 45%, transparent); }
+.pill.todo { border-style: dashed; }
+.tag { font-size: 11px; padding: 0 6px; line-height: 17px; border: 1px solid var(--sy-input-line); border-radius: 4px; color: var(--sy-fg2); white-space: nowrap; }
+.filest { font-family: var(--sy-mono); font-size: 10.5px; padding: 0 5px; line-height: 16px; border-radius: 3px; background: var(--sy-raised); color: var(--sy-fg2); }
+.add { color: var(--sy-review); }
+.del { color: var(--sy-error); }
+
+/* Progress */
+.bar { flex: 1; height: 3px; border-radius: 2px; background: var(--sy-line); overflow: hidden; min-width: 24px; }
+.bar > span { display: block; height: 100%; }
+
+/* Icon tiles (needs-you cards) */
+.tile { width: 30px; height: 30px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; flex: none; }
+.tile.needs { color: var(--sy-needs); background: color-mix(in srgb, var(--sy-needs) 12%, transparent); }
+.tile.error { color: var(--sy-error); background: color-mix(in srgb, var(--sy-error) 12%, transparent); }
+.tile.review { color: var(--sy-review); background: color-mix(in srgb, var(--sy-review) 12%, transparent); }
+.tile.info { color: var(--sy-fg2); background: var(--sy-raised); }
+
+/* Inputs */
+input[type="text"], input:not([type]), textarea, select {
+  font: inherit; color: var(--vscode-input-foreground); background: var(--sy-input);
+  border: 1px solid var(--sy-input-line); border-radius: var(--sy-radius); padding: 5px 8px; width: 100%;
+}
+textarea { resize: vertical; }
+.composer { border: 1px solid var(--sy-input-line); border-radius: var(--sy-radius-card); background: var(--sy-card); padding: 8px 10px; }
+.composer:focus-within { border-color: var(--sy-fg2); }
+.composer textarea { border: 0; background: transparent; padding: 0; resize: none; outline: none; display: block; font-size: 13px; }
+
+/* Code */
+pre.code, .code-block { font-family: var(--sy-mono); font-size: 12px; background: var(--vscode-textCodeBlock-background, var(--sy-input)); border: 1px solid var(--sy-line); border-radius: 5px; padding: 4px 8px; white-space: pre-wrap; word-break: break-word; margin: 0; }
+
+/* Motion: state changes, panels and streaming only. Off with reduced motion. */
+.pulse { animation: sy-pulse 1.6s ease-in-out infinite; }
+@keyframes sy-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+.caret { display: inline-block; width: 7px; height: 14px; background: currentColor; vertical-align: -2px; margin-left: 2px; animation: sy-caret 1s steps(1) infinite; }
+@keyframes sy-caret { 50% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .pulse, .caret { animation: none; }
+}
+body.vscode-reduce-motion .pulse, body.vscode-reduce-motion .caret { animation: none; }
+
+/* Scrollbars */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: var(--vscode-scrollbarSlider-background); border-radius: 10px; border: 3px solid transparent; background-clip: content-box; }
+::-webkit-scrollbar-thumb:hover { background: var(--vscode-scrollbarSlider-hoverBackground); background-clip: content-box; }
+
+/* High contrast themes: borders everywhere. */
+body.vscode-high-contrast .card, body.vscode-high-contrast .btn { border-color: var(--vscode-contrastBorder); }
+
+.empty { padding: 24px 16px; text-align: center; color: var(--sy-muted); display: flex; flex-direction: column; gap: 10px; align-items: center; }
+.error-text { color: var(--sy-error); }

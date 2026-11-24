@@ -9,7 +9,7 @@
 //
 // Phrases that name Microsoft's real products are kept, so they stay true:
 // "VS Code for the Web", the Stable/Insiders editions, the "VS Code
-// marketplace". Translations from language packs are not touched.
+// marketplace". Built-in language packs' translations get the same treatment.
 //
 //   node build/rebrand.mjs <VSCode-platform-arch> [--name Synapse]
 import * as fs from "node:fs";
@@ -24,6 +24,10 @@ const KEEP = [
   /\bVS Code (?:Stable|Insiders)\b/g,
   /\bVS Code marketplace\b/gi,
   /\bVisual Studio Code Marketplace\b/gi,
+  // The same in the Korean language pack.
+  /(?:Visual Studio Code|VS ?Code)\s*마켓플레이스/g,
+  /웹용 VS ?Code/g,
+  /VS ?Code\s*(?:Insiders|참가자|안정)/g,
 ];
 const NAME = /\bVisual Studio Code\b|\bVS ?Code\b|\bCode - OSS\b/g;
 
@@ -88,9 +92,31 @@ export function rebrandApp(appRoot, name) {
         if (r !== pkg[k]) (pkg[k] = r), (changed = true), stats.extensionStrings++;
       }
       if (changed) fs.writeFileSync(manifest, JSON.stringify(pkg, null, "\t"));
+      // Language packs built into the app: their translations name the product too.
+      for (const loc of pkg.contributes?.localizations ?? []) {
+        for (const tr of loc.translations ?? []) {
+          const file = path.join(extensions, ext.name, tr.path);
+          if (!fs.existsSync(file)) continue;
+          const data = readJson(file);
+          const n = rebrandDeep(data, name);
+          if (n) fs.writeFileSync(file, JSON.stringify(data)), (stats.translations = (stats.translations ?? 0) + n);
+        }
+      }
     }
   }
   return stats;
+}
+
+/** Rebrands every string inside `obj` in place; returns how many changed. */
+function rebrandDeep(obj, name) {
+  let n = 0;
+  for (const [k, v] of Object.entries(obj)) {
+    if (typeof v === "string") {
+      const r = rebrandText(v, name);
+      if (r !== v) (obj[k] = r), n++;
+    } else if (v && typeof v === "object") n += rebrandDeep(v, name);
+  }
+  return n;
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
@@ -108,5 +134,5 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
     process.exit(2);
   }
   const stats = rebrandApp(appRoot, name);
-  console.log(`rebrand: "${name}" in ${stats.messages} UI messages and ${stats.extensionStrings} built-in extension strings`);
+  console.log(`rebrand: "${name}" in ${stats.messages} UI messages, ${stats.extensionStrings} built-in extension strings and ${stats.translations ?? 0} translations`);
 }

@@ -16,6 +16,12 @@ export interface SynapseConfig {
   setupCommand?: string;
   /** Default 10 minutes. */
   testTimeoutMs?: number;
+  /** Run testCommand in an agent's own worktree after each turn that changed something. Default true when testCommand is set. */
+  testsAfterTurn?: boolean;
+  /** Give failing test output back to the agent as guidance (at most 3 times in a row). Default false. */
+  testsFeedback?: boolean;
+  /** New tasks ask the agent for a plan first, to be approved before it changes code. Default false. */
+  planFirst?: boolean;
   /** Debounce for ownership refreshes after file changes. Default 750 ms. */
   ownershipDebounceMs?: number;
   /** Default permission policy for agents, on top of Synapse's built-in default. */
@@ -28,7 +34,7 @@ export interface SynapseConfig {
    * conflicts across people show up before merge. It pushes unfinished code
    * to that remote, like pushing a branch.
    */
-  team?: { enabled?: boolean; remote?: string; name?: string; intervalSec?: number };
+  team?: { enabled?: boolean; remote?: string; name?: string; intervalSec?: number; members?: Record<string, "editor" | "viewer"> };
   /** Agent preset overrides, keyed by preset id. */
   presets?: Record<string, { command?: string; args?: string[]; name?: string; color?: string }>;
 }

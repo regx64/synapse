@@ -38,12 +38,16 @@ Agents
                                      comment on its lines; --tell gives it to the agent, --make-task makes a task
   comments [--agent ID]              open comments; comment resolve <id>
   takeover <from> <to> [--task ID] [--note TEXT]
+  review-by <agent-id> <reviewer-id>  another agent reviews this agent's changes (line comments)
                                      <to> continues <from>'s unfinished work (changes and task move)
 
 Coordination
   status                             the collaboration board
   alerts                             only what needs you now (approvals, conflicts, errors, reviews…)
   team [sync | leave]                teammates' agents via the git remote (team mode: synapse.config.json)
+  team adopt <@person/agent> <your-agent> [--note TEXT]
+                                     continue a teammate's agent's work with one of yours
+  team dismiss <claim-id>            dismiss a teammate's claim on one of your agents
   owners [--agent ID]                files and symbols each agent owns
   conflicts [--check]                conflicts between agents
   approvals                          pending approvals
@@ -53,8 +57,14 @@ Coordination
 
 Tasks (the person splits a goal and assigns subtasks)
   tasks                              the task graph
-  task add <title> [--agent ID] [--after t-1,t-2] [--scope GLOB,..] [--auto] [--description TEXT]
+  task add <title> [--agent ID] [--after t-1,t-2] [--scope GLOB,..] [--auto] [--plan-first] [--description TEXT]
   task start|done|fail|review|todo|rm <task-id>
+  task plan <task-id> [approve [--plan TEXT] | revise <feedback>]
+  queue                              the merge queue
+  queue add <agent-id> [--task ID]   merge that agent's work on its own when its tests pass
+  queue remove|retry <entry-id>
+  goal split <goal> --agent ID       an agent proposes tasks for a goal (changes no files)
+  goal show|accept|discard <goal-id> [--auto] [--plan-first]
 
 Messages and decisions
   messages [--agent ID]              structured messages between agents
@@ -302,6 +312,46 @@ async function run(c: SynapseClient, cmd: string, sub: string | undefined, rest:
       out(r, () => renderReview(r));
       return r.status === "ready" ? 0 : 2;
     }
+    case "queue": {
+      if (!sub) {
+        const q = (await c.call("state.get")).mergeQueue.filter((e) => e.status !== "removed");
+        out(q, () => (q.length ? q.map((e) => `${e.id}  ${e.status.padEnd(8)} ${e.agentId}${e.taskId ? ` (${e.taskId})` : ""}${e.error ? `\n    ${e.error.split("\n")[0]}` : ""}`).join("\n") : "the merge queue is empty"));
+        return 0;
+      }
+      if (sub === "add") {
+        const e = await c.call("queue.add", { agentId: need(rest[0], "agent id"), taskId: v.task as string | undefined });
+        out(e, () => `${e.id}: ${e.agentId}'s work is queued`);
+        return 0;
+      }
+      const id = need(rest[0], "queue entry id");
+      const e = sub === "remove" ? await c.call("queue.remove", { id }) : sub === "retry" ? await c.call("queue.retry", { id }) : undefined;
+      if (!e) throw new Error(`Unknown queue action: ${sub}`);
+      out(e, () => `${e.id}: ${e.status}`);
+      return 0;
+    }
+    case "goal": {
+      const action = need(sub, "goal action");
+      if (action === "split") {
+        const g = await c.call("goals.split", { goal: need(rest.join(" "), "goal"), agentId: need(v.agent as string | undefined, "--agent") });
+        out(g, () => `${g.id}: ${g.agentId} is splitting the goal; see it with: synapse goal show ${g.id}`);
+        return 0;
+      }
+      const id = need(rest[0], "goal id");
+      if (action === "accept") {
+        const tasks = await c.call("goals.accept", { id, autoStart: !!v.auto, planFirst: !!v["plan-first"] });
+        out(tasks, () => tasks.map((t) => `added ${t.id}: ${t.title}${t.agentId ? ` → ${t.agentId}` : ""}${t.dependsOn.length ? ` (after ${t.dependsOn.join(", ")})` : ""}`).join("\n"));
+        return 0;
+      }
+      if (action === "discard") {
+        const g = await c.call("goals.discard", { id });
+        out(g, () => `${g.id}: discarded`);
+        return 0;
+      }
+      const g = (await c.call("state.get")).goals.find((x) => x.id === id);
+      if (!g) throw new Error(`No goal ${id}`);
+      out(g, () => [`${g.id} (${g.status}): ${g.goal}`, ...g.tasks.map((t) => `  [${t.key}] ${t.title}${t.agentId ? ` → ${t.agentId}` : ""}${t.dependsOn.length ? ` (after ${t.dependsOn.join(", ")})` : ""}`), g.error ? `  error: ${g.error}` : ""].filter(Boolean).join("\n"));
+      return 0;
+    }
     case "tasks": {
       const list = await c.call("tasks.list");
       out(list, () => renderTasks(list));
@@ -318,11 +368,29 @@ async function run(c: SynapseClient, cmd: string, sub: string | undefined, rest:
           dependsOn: csv(v.after),
           scope: csv(v.scope),
           autoStart: !!v.auto,
+          planFirst: v["plan-first"] ? true : undefined,
         });
         out(t, () => `added ${t.id}: ${t.title}${t.blocked ? " (blocked)" : ""}`);
         return 0;
       }
       const id = need(rest[0], "task id");
+      if (action === "plan") {
+        const verb = rest[1];
+        if (verb === "approve") {
+          const x = await c.call("tasks.approvePlan", { id, plan: v.plan as string | undefined });
+          out(x, () => `${x.id}: plan approved, ${x.agentId} carries it out`);
+          return 0;
+        }
+        if (verb === "revise") {
+          const x = await c.call("tasks.revisePlan", { id, feedback: need(rest.slice(2).join(" "), "feedback") });
+          out(x, () => `${x.id}: plan sent back to ${x.agentId}`);
+          return 0;
+        }
+        const x = (await c.call("tasks.list")).find((y) => y.id === id);
+        if (!x) throw new Error(`No task ${id}`);
+        out(x.plan ?? null, () => (x.plan ? `${x.id} plan (${x.plan.state}, round ${x.plan.rounds}):\n${x.plan.text ?? "(being written)"}` : `${x.id} has no plan${x.planFirst ? " yet" : " (not plan-first)"}`));
+        return 0;
+      }
       if (action === "rm") {
         await c.call("tasks.remove", { id });
         out({ removed: id }, () => `removed ${id}`);
@@ -362,14 +430,21 @@ async function run(c: SynapseClient, cmd: string, sub: string | undefined, rest:
       return 0;
     }
     case "team": {
-      const t = sub === "sync" ? await c.call("team.sync") : sub === "leave" ? await c.call("team.leave") : await c.call("team.status");
+      if (sub === "adopt") {
+        const r = await c.call("team.adopt", { from: need(rest[0], "teammate's agent (@person/agent)"), to: need(rest[1], "your agent"), note: v.note as string | undefined });
+        out(r, () => `${r.to.id} continues ${rest[0]}${r.task ? ` as ${r.task.id}` : ""}: ${r.files.length} file(s)`);
+        return 0;
+      }
+      const t =
+        sub === "sync" ? await c.call("team.sync") : sub === "leave" ? await c.call("team.leave") : sub === "dismiss" ? await c.call("team.dismissClaim", { id: need(rest[0], "claim id") }) : await c.call("team.status");
       out(t, () => {
         if (!t.enabled) return 'team mode is off; enable it with "team": { "enabled": true } in synapse.config.json';
-        const lines = [`you are "${t.person}" on ${t.remote}${t.lastSync ? `, last sync ${t.lastSync}` : ""}${t.error ? `\n  error: ${t.error}` : ""}`];
+        const lines = [`you are "${t.person}" (${t.role}) on ${t.remote}${t.lastSync ? `, last sync ${t.lastSync}` : ""}${t.error ? `\n  error: ${t.error}` : ""}`];
+        for (const cl of t.claimsOnMe) lines.push(`  ! ${cl.by} continued ${cl.agent}'s work in their ${cl.byAgent} (dismiss: team dismiss ${cl.id})`);
         if (!t.peers.length) lines.push("  no teammates yet");
         for (const p of t.peers) {
           lines.push(`  ${p.person}${p.stale ? " (not updated recently)" : ""}`);
-          for (const a of p.agents) lines.push(`    ${a.name.padEnd(24)} ${a.status.padEnd(10)} ${a.task ?? ""}${a.files.length ? `  ${a.files.length} file(s)` : ""}`);
+          for (const a of p.agents) lines.push(`    ${a.id.padEnd(24)} ${a.status.padEnd(10)} ${a.task ?? ""}${a.files.length ? `  ${a.files.length} file(s)` : ""}${a.claimedBy ? `  (continued by ${a.claimedBy})` : ""}`);
         }
         return lines.join("\n");
       });
@@ -430,9 +505,14 @@ async function run(c: SynapseClient, cmd: string, sub: string | undefined, rest:
       out(x, () => `${x.id}: ${x.action === "guidance" ? "given to the agent" : x.action === "task" ? `task ${x.taskId} created` : "noted"} at ${x.path}:${x.line}`);
       return 0;
     }
+    case "review-by": {
+      const r = await c.call("agents.review", { reviewerId: need(rest[0], "reviewer agent"), targetId: need(sub, "agent to review") });
+      out(r, () => `${r.name} is reviewing ${sub}'s changes; its comments appear in: synapse comments ${sub}`);
+      return 0;
+    }
     case "takeover": {
       const r = await c.call("agents.takeover", { from: need(sub, "from agent"), to: need(rest[0], "to agent"), taskId: v.task as string | undefined, note: v.note as string | undefined });
-      out(r, () => `${r.to.id} took over ${r.task ? `${r.task.id} (${r.task.title})` : "the request"} from ${r.from.id}: ${r.files.length} file(s) moved, kept at ${r.commit.slice(0, 10)}`);
+      out(r, () => `${r.to.id} took over ${r.task ? `${r.task.id} (${r.task.title})` : "the request"} from ${r.from?.id}: ${r.files.length} file(s) moved, kept at ${r.commit.slice(0, 10)}`);
       return 0;
     }
     case "decisions": {

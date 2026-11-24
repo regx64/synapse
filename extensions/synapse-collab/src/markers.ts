@@ -1,5 +1,6 @@
 import * as path from "node:path";
 import * as vscode from "vscode";
+import { conflictText } from "./ui/conflict-text.js";
 import type { Conflict, CoreState, FileMarker } from "@synapse/client";
 import type { CoreConnection } from "./connection.js";
 
@@ -156,7 +157,7 @@ export class Markers implements vscode.Disposable {
         const range = r ? new vscode.Range(r.startLine, r.startCol, r.startLine, Number.MAX_SAFE_INTEGER) : new vscode.Range(0, 0, 0, 0);
         const d = new vscode.Diagnostic(
           range,
-          c.message,
+          conflictText(c, (id) => state.agents.find((a) => a.id === id)?.name ?? id),
           c.severity === "error" ? vscode.DiagnosticSeverity.Error : c.severity === "warning" ? vscode.DiagnosticSeverity.Warning : vscode.DiagnosticSeverity.Information,
         );
         d.source = "synapse";

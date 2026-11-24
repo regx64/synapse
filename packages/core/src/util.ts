@@ -86,7 +86,8 @@ export class KeyedSerializer {
   }
 }
 
-export const AGENT_COLORS = ["#d97757", "#10a37f", "#4285f4", "#a855f7", "#eab308", "#ef4444", "#14b8a6", "#f472b6"];
+/** Agent colors: the Synapse icon's coral, mint and blue first, then violet, pink and four more. */
+export const AGENT_COLORS = ["#ff7a66", "#3ddbb4", "#5b9dff", "#b08cff", "#f59ebb", "#d9c38a", "#7dd3fc", "#c4e17f"];
 
 export const AGENT_ID_RE = /^[a-z0-9][a-z0-9-]{0,31}$/;
 

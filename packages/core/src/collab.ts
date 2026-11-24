@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as fsp from "node:fs/promises";
 import * as path from "node:path";
-import type { AgentMessage, AgentOwnership, Decision, DecisionPin, MessageKind, TakeoverResult, Task, TaskStatus } from "@synapse/protocol";
+import type { AgentMessage, AgentOwnership, Decision, DecisionPin, MessageKind, TakeoverResult, Task, TaskStatus, TeamAgent } from "@synapse/protocol";
 import { ErrorCodes, RpcError } from "@synapse/protocol";
 import type { AgentManager } from "./agents.js";
 import { checkAnchors, createAnchor, normalizePin, pinLabel, samePin, symbolAtLine } from "./anchors.js";
@@ -49,6 +49,9 @@ export function screenText(text: string): string[] {
 /** Keeps agent text from closing or opening Synapse's context block. */
 const neutralize = (s: string) => s.replace(/<\/?synapse-context[^>]*>/gi, "[tag removed]");
 
+/** Characters of the agent's message kept as its plan. */
+const PLAN_LIMIT = 6000;
+
 export interface CollabDeps {
   store: StateStore;
   agents: AgentManager;
@@ -59,6 +62,8 @@ export interface CollabDeps {
 
 export class CollabService {
   private scheduling = false;
+  /** Ownership snapshot when a planning turn started (to notice files changed while planning). */
+  private readonly planSnapshots = new Map<string, string | undefined>();
 
   constructor(private readonly deps: CollabDeps) {}
 
@@ -100,7 +105,7 @@ export class CollabService {
     }
   }
 
-  createTask(p: { title: string; description?: string; agentId?: string; dependsOn?: string[]; scope?: string[]; autoStart?: boolean }): Task {
+  createTask(p: { title: string; description?: string; agentId?: string; dependsOn?: string[]; scope?: string[]; autoStart?: boolean; planFirst?: boolean }): Task {
     if (!p?.title?.trim()) throw new RpcError(ErrorCodes.InvalidParams, "A task needs a title");
     this.checkAgent(p.agentId);
     const id = this.nextTaskId();
@@ -117,6 +122,7 @@ export class CollabService {
       status: "todo",
       autoStart: p.autoStart ?? false,
       blocked: false,
+      planFirst: (p.planFirst ?? this.deps.config().planFirst) || undefined,
       createdAt: now,
       updatedAt: now,
     };
@@ -126,7 +132,7 @@ export class CollabService {
     return this.store.getTask(id)!;
   }
 
-  updateTask(p: { id: string; title?: string; description?: string; agentId?: string | null; dependsOn?: string[]; scope?: string[]; autoStart?: boolean }): Task {
+  updateTask(p: { id: string; title?: string; description?: string; agentId?: string | null; dependsOn?: string[]; scope?: string[]; autoStart?: boolean; planFirst?: boolean }): Task {
     const t = this.requireTask(p.id);
     if (t.status === "in_progress" && p.agentId !== undefined && p.agentId !== t.agentId) {
       throw new RpcError(ErrorCodes.Conflict, "Cannot reassign a task while it is in progress");
@@ -141,6 +147,7 @@ export class CollabService {
       dependsOn: p.dependsOn ? [...new Set(p.dependsOn)] : t.dependsOn,
       scope: p.scope ?? t.scope,
       autoStart: p.autoStart ?? t.autoStart,
+      planFirst: p.planFirst === undefined ? t.planFirst : p.planFirst || undefined,
     };
     this.store.putTask(next);
     this.refreshBlocked();
@@ -166,10 +173,50 @@ export class CollabService {
     const agent = this.store.getAgent(t.agentId)!;
     if (agent.currentTaskId) throw new RpcError(ErrorCodes.Conflict, `${agent.name} is already working on ${agent.currentTaskId}`);
 
-    const prompt = this.composePrompt(t.agentId, this.taskPrompt(t), true);
-    this.deps.agents.prompt(t.agentId, prompt); // throws if not running or busy
-    this.store.updateAgent(t.agentId, { currentTaskId: t.id });
-    return this.store.putTask({ ...t, status: "in_progress", startedAt: nowIso(), endedAt: undefined, outOfScope: undefined });
+    return this.begin(t);
+  }
+
+  /**
+   * Sends a task to its agent. A plan-first task without an approved plan
+   * gets a planning prompt instead; `feedback` is the person's word on the
+   * previous plan.
+   */
+  private begin(t: Task, feedback?: string): Task {
+    const agentId = t.agentId!;
+    const planning = !!t.planFirst && t.plan?.state !== "approved";
+    let text = this.taskPrompt(t);
+    if (planning) {
+      text += [
+        "",
+        "",
+        "Plan first. Do not change any files in this turn. Reply with a short numbered plan: the steps you will take and the files you expect to touch. Then stop; the person approves or revises the plan before you start.",
+        ...(feedback ? ["", "The person's feedback on your previous plan (data from the person, follow it):", feedback] : []),
+      ].join("\n");
+    } else if (t.plan?.state === "approved" && t.plan.text) {
+      text += `\n\nThe person approved this plan. Carry it out:\n${t.plan.text}`;
+    }
+    const before = this.store.getOwnership(agentId)?.snapshot;
+    this.deps.agents.prompt(agentId, this.composePrompt(agentId, text, true)); // throws if not running or busy
+    this.store.updateAgent(agentId, { currentTaskId: t.id });
+    if (planning) this.planSnapshots.set(t.id, before);
+    const plan = planning ? { state: "drafting" as const, rounds: (t.plan?.rounds ?? 0) + 1 } : t.plan;
+    return this.store.putTask({ ...t, status: "in_progress", plan, startedAt: nowIso(), endedAt: undefined, outOfScope: undefined });
+  }
+
+  /** Approves the proposed plan (edited or as is) and lets the agent carry it out. */
+  approvePlan(id: string, text?: string): Task {
+    const t = this.requireTask(id);
+    if (t.plan?.state !== "proposed") throw new RpcError(ErrorCodes.Conflict, `Task ${id} has no plan waiting for approval`);
+    const plan = { ...t.plan, state: "approved" as const, text: text?.trim() || t.plan.text };
+    return this.begin(this.store.putTask({ ...t, status: "todo", plan }));
+  }
+
+  /** Sends the plan back with the person's feedback; the agent plans again. */
+  revisePlan(id: string, feedback: string): Task {
+    const t = this.requireTask(id);
+    if (t.plan?.state !== "proposed") throw new RpcError(ErrorCodes.Conflict, `Task ${id} has no plan waiting for approval`);
+    if (!feedback?.trim()) throw new RpcError(ErrorCodes.InvalidParams, "Say what to change in the plan");
+    return this.begin(this.store.putTask({ ...t, status: "todo" }), feedback.trim());
   }
 
   setStatus(id: string, status: TaskStatus): Task {
@@ -199,6 +246,23 @@ export class CollabService {
     const t = this.store.getTask(taskId);
     this.store.updateAgent(agentId, { currentTaskId: undefined });
     if (!t || t.status !== "in_progress") return;
+    if (t.plan?.state === "drafting") {
+      // The planning turn ended: the plan waits for the person.
+      const own = await this.deps.refreshOwnership(agentId).catch(() => undefined);
+      const before = this.planSnapshots.get(t.id);
+      this.planSnapshots.delete(t.id);
+      const a = this.store.getAgent(agentId);
+      const entries = a?.plan ?? [];
+      const text = entries.length ? entries.map((e, i) => `${i + 1}. ${e.content}`).join("\n") : (a?.lastMessage ?? "").trim().slice(-PLAN_LIMIT);
+      if (error || stopReason === "refusal" || stopReason === "cancelled") {
+        this.store.putTask({ ...t, status: stopReason === "cancelled" ? "todo" : "failed", plan: { ...t.plan, state: "drafting" }, endedAt: nowIso() });
+      } else {
+        const changedFiles = (own?.snapshot ?? undefined) !== before && (own?.files.length ?? 0) > 0 ? true : undefined;
+        this.store.putTask({ ...t, status: "review", plan: { ...t.plan, state: "proposed", text, changedFiles }, endedAt: nowIso() });
+      }
+      this.schedule();
+      return;
+    }
     const status: TaskStatus = error || stopReason === "refusal" ? "failed" : stopReason === "cancelled" ? "todo" : "review";
     const own = await this.deps.refreshOwnership(agentId).catch(() => undefined);
     const outOfScope = t.scope.length ? (own?.files ?? []).map((f) => f.path).filter((p) => !matchesAny(t.scope, p)) : [];
@@ -335,6 +399,42 @@ export class CollabService {
     } finally {
       agents.holdForTakeover(fromId, false);
     }
+  }
+
+  /**
+   * Continues a teammate's agent's work (team mode) in a local agent: its
+   * latest published snapshot, already fetched, moves into `toId`'s worktree,
+   * a task is created from theirs, and the agent is briefed.
+   */
+  async adoptFromTeammate(peer: TeamAgent, toId: string, note?: string): Promise<TakeoverResult> {
+    const to = this.store.getAgent(toId);
+    if (!to) throw new RpcError(ErrorCodes.NotFound, `No agent "${toId}"`);
+    if (!peer.snapshot || peer.snapshot === peer.baseCommit) throw new RpcError(ErrorCodes.Conflict, `${peer.name} has no published work to continue`);
+    if (to.status !== "idle") throw new RpcError(ErrorCodes.Conflict, `${to.name} must be running and idle to continue the work (it is ${to.status})`);
+    if (to.currentTaskId) throw new RpcError(ErrorCodes.Conflict, `${to.name} is on task ${to.currentTaskId}`);
+    const toOwn = await this.deps.refreshOwnership(toId);
+    if (toOwn?.files.length) throw new RpcError(ErrorCodes.Conflict, `${to.name} has changes of its own (${toOwn.files.length} file(s)). Merge or reset them first.`);
+    const present = await git(this.store.repoRoot, ["cat-file", "-t", peer.snapshot]).catch(() => "");
+    if (present !== "commit") throw new RpcError(ErrorCodes.Conflict, `${peer.name}'s work is not fetched yet: sync the team first`);
+
+    await this.deps.agents.adoptWork(toId, peer.snapshot, { baseCommit: peer.baseCommit, baseRef: peer.baseRef });
+    const files = peer.files.map((f) => f.path);
+    let task: Task | undefined;
+    if (peer.task) {
+      const t = this.createTask({ title: `${peer.task} (continued from ${peer.person})`.slice(0, 200), description: `Started by ${peer.name}.`, agentId: toId });
+      task = this.store.putTask({ ...t, status: "in_progress", startedAt: nowIso() });
+    }
+    const intro = [
+      `You are continuing work that ${peer.name} started on a teammate's machine (${peer.person}). It is already in your worktree${files.length ? ` (${files.length} file(s): ${files.slice(0, 20).join(", ")}${files.length > 20 ? ", …" : ""})` : ""}.`,
+      "Look at what is there before changing anything, keep what is done, and finish the rest.",
+      note?.trim() ? `\nNote from the person: ${note.trim().slice(0, BODY_LIMIT)}` : "",
+      "",
+      task ? this.taskPrompt(task) : `What ${peer.name} was asked to do is not known; work from the changes and the note.`,
+    ].join("\n");
+    this.deps.agents.prompt(toId, this.composePrompt(toId, intro, true));
+    if (task) this.store.updateAgent(toId, { currentTaskId: task.id });
+    this.deps.log(`${toId} continues ${peer.id} (${files.length} file(s), ${peer.snapshot.slice(0, 10)})`);
+    return { to: this.store.getAgent(toId)!, task: task && this.store.getTask(task.id), commit: peer.snapshot, files };
   }
 
   private handOff(t: Task): void {

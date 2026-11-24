@@ -114,7 +114,7 @@ test("another agent takes over unfinished work: changes, task and context move w
     assert.deepEqual([...r.files].sort(), ["src/pricing.ts", "src/tax.ts"]);
     assert.equal(r.task!.agentId, "beta");
     assert.equal(r.task!.status, "in_progress");
-    assert.equal(r.from.currentTaskId, undefined);
+    assert.equal(r.from!.currentTaskId, undefined);
     assert.match(gitOut(repo, "for-each-ref", "--format=%(refname)", "refs/synapse/takeovers"), /refs\/synapse\/takeovers\/alpha-to-beta-\d+/);
 
     // The work moved: beta has it, alpha is back at its base.

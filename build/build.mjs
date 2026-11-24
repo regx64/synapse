@@ -23,6 +23,8 @@ if (major !== wantMajor) console.warn(`warning: Code - OSS ${pin.tag} expects No
 if (!process.argv.includes("--skip-fetch")) run(process.execPath, ["build/get-vscode.mjs"], { cwd: ROOT });
 run(process.execPath, ["build/apply-patches.mjs"], { cwd: ROOT });
 run(process.execPath, ["build/prepare.mjs"], { cwd: ROOT });
+// Language packs that ship with Synapse (Korean): put into extensions/ like a built-in extension.
+run(process.execPath, ["build/language-packs.mjs", "--prepare"], { cwd: ROOT });
 
 // Windows packaging strips signatures from bundled binaries with signtool.exe
 // (Windows SDK). It is usually installed but not on PATH; find it.
@@ -44,6 +46,8 @@ const target = platform === "darwin" ? `vscode-darwin-${arch}-min` : platform ==
 run("pnpm", ["run", "gulp", target], { cwd: VSCODE, env });
 // Upstream product names in the UI text become Synapse (no core patch needed).
 run(process.execPath, ["build/rebrand.mjs", buildOutput(platform, arch)], { cwd: ROOT });
+// Tell the editor which languages ship with it (read by patch 0004).
+run(process.execPath, ["build/language-packs.mjs", "--index", buildOutput(platform, arch)], { cwd: ROOT });
 // What users receive must carry every license it needs, and no GitHub Copilot.
 run(process.execPath, ["build/check-output-licenses.mjs", buildOutput(platform, arch), "--fix"], { cwd: ROOT });
 console.log(`built ${target}: ${buildOutput(platform, arch)}`);

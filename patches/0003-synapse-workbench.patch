@@ -1,0 +1,336 @@
+diff --git a/src/vs/workbench/contrib/synapse/electron-browser/synapse.contribution.ts b/src/vs/workbench/contrib/synapse/electron-browser/synapse.contribution.ts
+new file mode 100644
+index 00000000..a4ec860c
+--- /dev/null
++++ b/src/vs/workbench/contrib/synapse/electron-browser/synapse.contribution.ts
+@@ -0,0 +1,316 @@
++/*---------------------------------------------------------------------------------------------
++ *  Copyright (c) The Synapse contributors. Licensed under the MIT License.
++ *--------------------------------------------------------------------------------------------*/
++
++// The workbench half of Synapse's UI; the rest is the built-in synapse-collab
++// extension. It adds what an extension cannot: the agents' status in the
++// title bar, desktop notifications, the Synapse fonts in the workbench, and
++// the agent column as a drawer in narrow windows.
++
++import { $, append, clearNode } from '../../../../base/browser/dom.js';
++import { asCSSUrl } from '../../../../base/browser/cssValue.js';
++import { createStyleSheet } from '../../../../base/browser/domStylesheets.js';
++import { BaseActionViewItem, IBaseActionViewItemOptions } from '../../../../base/browser/ui/actionbar/actionViewItems.js';
++import { mainWindow } from '../../../../base/browser/window.js';
++import { IAction } from '../../../../base/common/actions.js';
++import { Emitter } from '../../../../base/common/event.js';
++import { Disposable } from '../../../../base/common/lifecycle.js';
++import { FileAccess } from '../../../../base/common/network.js';
++import { URI } from '../../../../base/common/uri.js';
++import { IActionViewItemService } from '../../../../platform/actions/browser/actionViewItemService.js';
++import { Action2, MenuId, registerAction2 } from '../../../../platform/actions/common/actions.js';
++import { CommandsRegistry, ICommandService } from '../../../../platform/commands/common/commands.js';
++import { IConfigurationService } from '../../../../platform/configuration/common/configuration.js';
++import { IContextKeyService, RawContextKey } from '../../../../platform/contextkey/common/contextkey.js';
++import { IInstantiationService, ServicesAccessor } from '../../../../platform/instantiation/common/instantiation.js';
++import { IWorkbenchContribution, WorkbenchPhase, registerWorkbenchContribution2 } from '../../../common/contributions.js';
++import { INativeWorkbenchEnvironmentService } from '../../../services/environment/electron-browser/environmentService.js';
++import { IHostService } from '../../../services/host/browser/host.js';
++import { IPartVisibilityChangeEvent, IWorkbenchLayoutService, Parts } from '../../../services/layout/browser/layoutService.js';
++
++/** What the extension reports for the title bar. Labels come already translated. */
++interface ISynapseTitleStatus {
++	readonly working: number;
++	readonly needs: number;
++	readonly review: number;
++	readonly conflicts: number;
++	readonly labels: { readonly working: string; readonly needs: string; readonly review: string; readonly conflicts: string; readonly tooltip: string };
++}
++
++const STATUS_VISIBLE = new RawContextKey<boolean>('synapse.titleStatusVisible', false);
++const OPEN_HOME_FROM_TITLE = 'synapse.titleStatus.openHome';
++/** Below this window width the agent column (secondary side bar) hides itself. */
++const NARROW_WIDTH = 1280;
++
++class TitleStatusModel {
++	private static current: ISynapseTitleStatus | undefined;
++	private static readonly emitter = new Emitter<void>();
++	static readonly onDidChange = TitleStatusModel.emitter.event;
++
++	static get value(): ISynapseTitleStatus | undefined {
++		return TitleStatusModel.current;
++	}
++
++	static set(value: ISynapseTitleStatus | undefined): void {
++		TitleStatusModel.current = value;
++		TitleStatusModel.emitter.fire();
++	}
++}
++
++function asTitleStatus(value: unknown): ISynapseTitleStatus | undefined {
++	if (!value || typeof value !== 'object') {
++		return undefined;
++	}
++	const v = value as Record<string, unknown>;
++	const count = (n: unknown) => (typeof n === 'number' && Number.isFinite(n) ? Math.max(0, Math.min(999, Math.floor(n))) : 0);
++	const labels = (v.labels && typeof v.labels === 'object' ? v.labels : {}) as Record<string, unknown>;
++	const label = (s: unknown, fallback: string) => (typeof s === 'string' && s.length ? s.slice(0, 40) : fallback);
++	return {
++		working: count(v.working),
++		needs: count(v.needs),
++		review: count(v.review),
++		conflicts: count(v.conflicts),
++		labels: {
++			working: label(labels.working, 'Working'),
++			needs: label(labels.needs, 'Needs you'),
++			review: label(labels.review, 'To review'),
++			conflicts: label(labels.conflicts, 'Conflict'),
++			tooltip: label(labels.tooltip, 'Synapse'),
++		},
++	};
++}
++
++// The extension reports agent status here (null when synapse-core is not connected).
++CommandsRegistry.registerCommand('_synapse.titleStatus', (accessor: ServicesAccessor, status: unknown) => {
++	const value = asTitleStatus(status);
++	TitleStatusModel.set(value);
++	STATUS_VISIBLE.bindTo(accessor.get(IContextKeyService)).set(!!value);
++});
++
++// A desktop notification; clicking it brings the window forward and opens Synapse home.
++CommandsRegistry.registerCommand('_synapse.osNotify', (accessor: ServicesAccessor, options: unknown) => {
++	const hostService = accessor.get(IHostService);
++	const commandService = accessor.get(ICommandService);
++	const o = (options && typeof options === 'object' ? options : {}) as { title?: unknown; body?: unknown };
++	if (typeof o.title !== 'string' || typeof Notification === 'undefined') {
++		return;
++	}
++	const notification = new Notification(o.title.slice(0, 200), { body: typeof o.body === 'string' ? o.body.slice(0, 500) : undefined });
++	notification.onclick = () => {
++		hostService.focus(mainWindow);
++		commandService.executeCommand('synapse.openHome');
++	};
++});
++
++registerAction2(class extends Action2 {
++	constructor() {
++		super({
++			id: OPEN_HOME_FROM_TITLE,
++			title: { value: 'Synapse', original: 'Synapse' },
++			f1: false,
++			menu: { id: MenuId.TitleBarAdjacentCenter, order: -2000, when: STATUS_VISIBLE },
++		});
++	}
++
++	run(accessor: ServicesAccessor): Promise<unknown> {
++		return accessor.get(ICommandService).executeCommand('synapse.openHome');
++	}
++});
++
++/** Agents working, needing the person, ready for review, in conflict. Click: Synapse home. */
++class TitleStatusWidget extends BaseActionViewItem {
++
++	constructor(action: IAction, options: IBaseActionViewItemOptions | undefined) {
++		super(undefined, action, options);
++		this._register(TitleStatusModel.onDidChange(() => this.update()));
++	}
++
++	override render(container: HTMLElement): void {
++		super.render(container);
++		container.classList.add('synapse-title-status');
++		container.setAttribute('role', 'button');
++		this.update();
++	}
++
++	private update(): void {
++		const element = this.element;
++		if (!element) {
++			return;
++		}
++		clearNode(element);
++		const s = TitleStatusModel.value;
++		if (!s) {
++			return;
++		}
++		const chip = (kind: string, label: string, n: number) => {
++			const c = append(element, $(`span.chip.${kind}`));
++			append(c, $('span.dot'));
++			append(c, $('span.label', undefined, label));
++			append(c, $('span.n', undefined, String(n)));
++		};
++		chip('working', s.labels.working, s.working);
++		if (s.needs) {
++			chip('needs', s.labels.needs, s.needs);
++		}
++		if (s.review) {
++			chip('review', s.labels.review, s.review);
++		}
++		if (s.conflicts) {
++			chip('conflicts', s.labels.conflicts, s.conflicts);
++		}
++		const parts = [`${s.labels.working} ${s.working}`];
++		if (s.needs) { parts.push(`${s.labels.needs} ${s.needs}`); }
++		if (s.review) { parts.push(`${s.labels.review} ${s.review}`); }
++		if (s.conflicts) { parts.push(`${s.labels.conflicts} ${s.conflicts}`); }
++		element.setAttribute('aria-label', `${parts.join(', ')}. ${s.labels.tooltip}`);
++		element.title = s.labels.tooltip;
++	}
++}
++
++class SynapseWorkbenchContribution extends Disposable implements IWorkbenchContribution {
++
++	static readonly ID = 'workbench.contrib.synapse';
++
++	private lastWidth: number | undefined;
++	private autoHidden = false;
++	/** The agent column is open over the editor area in a narrow window. */
++	private drawer = false;
++	/** Set while this contribution changes the layout itself. */
++	private changing = false;
++	private readonly createdAt = Date.now();
++
++	constructor(
++		@IActionViewItemService actionViewItemService: IActionViewItemService,
++		@IInstantiationService instantiationService: IInstantiationService,
++		@INativeWorkbenchEnvironmentService environmentService: INativeWorkbenchEnvironmentService,
++		@IWorkbenchLayoutService private readonly layoutService: IWorkbenchLayoutService,
++		@IConfigurationService private readonly configurationService: IConfigurationService,
++	) {
++		super();
++
++		this._register(actionViewItemService.register(MenuId.TitleBarAdjacentCenter, OPEN_HOME_FROM_TITLE, (action, options) => instantiationService.createInstance(TitleStatusWidget, action, options)));
++
++		this.installStyles(environmentService);
++
++		this._register(layoutService.onDidLayoutMainContainer(dimension => this.onLayout(dimension.width)));
++		this._register(layoutService.onDidChangePartVisibility(e => this.onPartVisibility(e)));
++		if (layoutService.mainContainerDimension.width > 0) {
++			this.onLayout(layoutService.mainContainerDimension.width);
++		}
++	}
++
++	/** Pretendard for the workbench, JetBrains Mono for editors: both ship with the Synapse extension. */
++	private installStyles(environmentService: INativeWorkbenchEnvironmentService): void {
++		const fonts = URI.joinPath(URI.file(environmentService.builtinExtensionsPath), 'synapse-collab', 'media', 'fonts');
++		const url = (file: string) => asCSSUrl(FileAccess.uriToBrowserUri(URI.joinPath(fonts, file)));
++		const style = createStyleSheet(undefined, undefined, this._store);
++		style.textContent = `
++@font-face { font-family: "Pretendard"; src: ${url('PretendardVariable.woff2')} format("woff2"); font-weight: 45 920; font-display: swap; }
++@font-face { font-family: "JetBrains Mono"; src: ${url('JetBrainsMono-latin.woff2')} format("woff2"); font-weight: 100 800; font-display: swap; }
++.monaco-workbench.monaco-workbench.monaco-workbench:not(.synapse-system-font) { font-family: "Pretendard", -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", system-ui, sans-serif; }
++.synapse-title-status { display: flex; align-items: center; height: 22px; padding: 0 2px; border-radius: 5px; cursor: pointer; font-size: 12px; -webkit-app-region: no-drag; }
++.synapse-title-status:hover { background-color: var(--vscode-toolbar-hoverBackground); }
++.synapse-title-status .chip { display: inline-flex; align-items: center; gap: 5px; padding: 0 7px; white-space: nowrap; }
++.synapse-title-status .dot { width: 7px; height: 7px; border-radius: 50%; background-color: currentColor; }
++.synapse-title-status .n { opacity: 0.75; }
++.synapse-title-status .working { color: var(--vscode-synapse-statusWorking, var(--vscode-titleBar-activeForeground)); }
++.synapse-title-status .working .dot { animation: synapse-pulse 1.6s ease-in-out infinite; }
++.synapse-title-status .needs { color: var(--vscode-synapse-statusNeedsYou, var(--vscode-editorWarning-foreground)); }
++.synapse-title-status .review { color: var(--vscode-synapse-statusReview, var(--vscode-titleBar-activeForeground)); }
++.synapse-title-status .conflicts { color: var(--vscode-synapse-statusError, var(--vscode-errorForeground)); }
++@keyframes synapse-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
++.monaco-workbench.reduce-motion .synapse-title-status .dot { animation: none; }
++@media (prefers-reduced-motion: reduce) { .synapse-title-status .dot { animation: none; } }
++.monaco-workbench.synapse-drawer .part.auxiliarybar { box-shadow: -16px 0 32px rgba(0, 0, 0, 0.35); }
++`;
++		const applyFont = () => this.layoutService.mainContainer.classList.toggle('synapse-system-font', this.configurationService.getValue('synapse.workbenchFont') === false);
++		applyFont();
++		this._register(this.configurationService.onDidChangeConfiguration(e => {
++			if (e.affectsConfiguration('synapse.workbenchFont')) {
++				applyFont();
++			}
++		}));
++	}
++
++	private get enabled(): boolean {
++		return this.configurationService.getValue('synapse.autoHideAgentColumn') !== false;
++	}
++
++	/** Changes the layout without reacting to the change. */
++	private change(fn: () => void): void {
++		this.changing = true;
++		try {
++			fn();
++		} finally {
++			this.changing = false;
++		}
++	}
++
++	private setDrawer(on: boolean): void {
++		this.drawer = on;
++		this.layoutService.mainContainer.classList.toggle('synapse-drawer', on);
++	}
++
++	/**
++	 * Opening the agent column in a narrow window shows it as a drawer over
++	 * the editor area (the column maximized); it goes back to a column when
++	 * the window is wide again or the column is closed. While the window
++	 * starts up (layout restore, the extension's first run) a narrow window
++	 * keeps the column hidden instead.
++	 */
++	private onPartVisibility(e: IPartVisibilityChangeEvent): void {
++		if (e.partId !== Parts.AUXILIARYBAR_PART || this.changing || !this.enabled) {
++			return;
++		}
++		if (!e.visible) {
++			this.setDrawer(false);
++			return;
++		}
++		if ((this.lastWidth ?? NARROW_WIDTH) >= NARROW_WIDTH) {
++			return;
++		}
++		if (Date.now() - this.createdAt < 10_000) {
++			this.autoHidden = true;
++			this.change(() => this.layoutService.setPartHidden(true, Parts.AUXILIARYBAR_PART));
++			return;
++		}
++		this.autoHidden = false;
++		this.change(() => this.layoutService.setAuxiliaryBarMaximized(true));
++		this.setDrawer(true);
++	}
++
++	/**
++	 * The agent column hides itself when the window gets narrow and comes
++	 * back when it is wide again; a drawer goes back to a column.
++	 */
++	private onLayout(width: number): void {
++		if (width <= 0) {
++			return;
++		}
++		if (this.configurationService.getValue('synapse.autoHideAgentColumn') === false) {
++			this.lastWidth = width;
++			return;
++		}
++		const visible = this.layoutService.isVisible(Parts.AUXILIARYBAR_PART);
++		const wasWide = this.lastWidth === undefined || this.lastWidth >= NARROW_WIDTH;
++		if (this.autoHidden && visible) {
++			this.autoHidden = false; // opened by hand
++		}
++		if (width >= NARROW_WIDTH && this.drawer) {
++			this.change(() => this.layoutService.setAuxiliaryBarMaximized(false));
++			this.setDrawer(false);
++		}
++		if (width < NARROW_WIDTH && wasWide && visible && !this.drawer) {
++			this.autoHidden = true;
++			this.change(() => this.layoutService.setPartHidden(true, Parts.AUXILIARYBAR_PART));
++		} else if (width >= NARROW_WIDTH && this.autoHidden) {
++			this.autoHidden = false;
++			if (!visible) {
++				this.change(() => this.layoutService.setPartHidden(false, Parts.AUXILIARYBAR_PART));
++			}
++		}
++		this.lastWidth = width;
++	}
++}
++
++registerWorkbenchContribution2(SynapseWorkbenchContribution.ID, SynapseWorkbenchContribution, WorkbenchPhase.AfterRestored);
+diff --git a/src/vs/workbench/workbench.desktop.main.ts b/src/vs/workbench/workbench.desktop.main.ts
+index 213bf58a..3d5887ff 100644
+--- a/src/vs/workbench/workbench.desktop.main.ts
++++ b/src/vs/workbench/workbench.desktop.main.ts
+@@ -124,6 +124,9 @@ import './contrib/logs/electron-browser/logs.contribution.js';
+ // Localizations
+ import './contrib/localization/electron-browser/localization.contribution.js';
+ 
++// Synapse: agent status in the title bar, notifications, fonts, narrow windows
++import './contrib/synapse/electron-browser/synapse.contribution.js';
++
+ // Explorer
+ import './contrib/files/electron-browser/fileActions.contribution.js';
+ 

@@ -20,7 +20,7 @@ const BUILTIN: PresetInfo[] = [
     name: "Claude",
     command: "npx",
     args: ["-y", "@agentclientprotocol/claude-agent-acp@0.109.1"],
-    color: "#d97757",
+    color: "#ff7a66",
     notes: "Claude through its ACP adapter (built on the Claude Agent SDK). Needs your own ANTHROPIC_API_KEY, or Amazon Bedrock / Google Vertex AI credentials.",
     // Anthropic does not allow third-party tools built on the Agent SDK to
     // offer Claude.ai (subscription) login; they must use API keys.
@@ -35,7 +35,7 @@ const BUILTIN: PresetInfo[] = [
     name: "Codex",
     command: "npx",
     args: ["-y", "@agentclientprotocol/codex-acp@2.9.0"],
-    color: "#10a37f",
+    color: "#3ddbb4",
     notes: "Codex through its ACP adapter. Uses OPENAI_API_KEY (or CODEX_API_KEY), or the sign-in you made with Codex's own CLI; Synapse never handles it.",
   },
   {
@@ -43,7 +43,7 @@ const BUILTIN: PresetInfo[] = [
     name: "Gemini",
     command: "gemini",
     args: ["--experimental-acp"],
-    color: "#4285f4",
+    color: "#5b9dff",
     notes: "Gemini CLI in ACP mode (needs `gemini` on PATH). Not part of the MVP: a third agent is out of scope until G2.",
   },
 ];
@@ -68,7 +68,7 @@ function mockPreset(): PresetInfo | undefined {
     name: "Mock",
     command: process.execPath,
     args: [main],
-    color: "#a855f7",
+    color: "#b08cff",
     notes: "Scripted ACP agent for tests and demos. Replays steps; never calls a model.",
   };
 }

@@ -33,6 +33,12 @@ export interface CallRef {
   callee: string;
   /** Called through an object, module or type (`obj.f()`, `mod.f()`), so the target cannot be resolved by name. */
   member: boolean;
+  /**
+   * What the call goes through, when it is a plain name or path: `obj` in
+   * `obj.f()`, `pkg` in Go's `pkg.F()`, `crate::pricing` in Rust's
+   * `crate::pricing::f()`. Used to resolve the call through imports.
+   */
+  object?: string;
   /** Number of arguments, or undefined when it cannot be known (spread arguments). */
   argCount?: number;
   line: number;
@@ -52,7 +58,7 @@ export interface ParsedFile {
   language: string;
   symbols: ParsedSymbol[];
   calls: CallRef[];
-  /** JavaScript/TypeScript and Python only. */
+  /** JavaScript/TypeScript, Python, Go, Java and Rust (use declarations). */
   imports: ImportBinding[];
   /** The file has import statements (it is a module, so unimported free names are not other files' functions). */
   hasImports: boolean;
@@ -441,7 +447,8 @@ function extract(lang: LangId, root: TsNode, source: string): ParsedFile {
         const row = node.startPosition.row;
         const target = node.childForFieldName("function") ?? node.childForFieldName("constructor");
         const member = target ? target.type !== "identifier" : !!node.childForFieldName("object");
-        calls.push({ callee, member, argCount: argCountOf(node), line: row, text: (lines[row] ?? "").trim().slice(0, 200), inSymbol: scope.enclosing });
+        const object = member ? qualifierOf(node, target) : undefined;
+        calls.push({ callee, member, object, argCount: argCountOf(node), line: row, text: (lines[row] ?? "").trim().slice(0, 200), inSymbol: scope.enclosing });
       }
     }
     collectImports(lang, node, imports, flags);
@@ -533,6 +540,63 @@ function extract(lang: LangId, root: TsNode, source: string): ParsedFile {
   };
 }
 
+/** The plain name or path a member call goes through (see CallRef.object). */
+function qualifierOf(call: TsNode, target: TsNode | null): string | undefined {
+  const simple = (n: TsNode | null | undefined) => (n && /^(identifier|this|self|package_identifier|type_identifier|crate|super)$/.test(n.type) ? n.text : undefined);
+  if (!target) return simple(call.childForFieldName("object")); // Java: obj.m()
+  switch (target.type) {
+    case "member_expression": // JS: obj.f()
+      return simple(target.childForFieldName("object"));
+    case "attribute": // Python: obj.f()
+      return simple(target.childForFieldName("object"));
+    case "selector_expression": // Go: pkg.F()
+      return simple(target.childForFieldName("operand"));
+    case "field_expression": // Rust: x.f()
+      return simple(target.childForFieldName("value"));
+    case "scoped_identifier": {
+      // Rust: a::b::f()
+      const p = target.childForFieldName("path");
+      return p && /^[A-Za-z_][\w:]*$/.test(p.text) ? p.text : undefined;
+    }
+    default:
+      return undefined;
+  }
+}
+
+/** `use a::b::{c, d as e, f::*}` → (local, path, name) triples. */
+function expandRustUse(text: string): { local: string; source: string; imported: string; wildcard: boolean }[] {
+  const out: { local: string; source: string; imported: string; wildcard: boolean }[] = [];
+  const walk = (prefix: string, part: string) => {
+    part = part.trim();
+    if (!part) return;
+    const brace = /^(.*?)::\{([\s\S]*)\}$/.exec(part) ?? (part.startsWith("{") ? ["", "", part.slice(1, -1)] : null);
+    if (brace) {
+      const base = brace[1] ? (prefix ? `${prefix}::${brace[1]}` : brace[1]) : prefix;
+      let depth = 0;
+      let cur = "";
+      for (const ch of brace[2]!) {
+        if (ch === "{") depth++;
+        if (ch === "}") depth--;
+        if (ch === "," && depth === 0) {
+          walk(base, cur);
+          cur = "";
+        } else cur += ch;
+      }
+      walk(base, cur);
+      return;
+    }
+    const as = /^(.*?)\s+as\s+(\w+)$/.exec(part);
+    const full = prefix ? `${prefix}::${as ? as[1] : part}` : as ? as[1]! : part;
+    const segs = full.split("::");
+    const last = segs.pop()!;
+    if (last === "*") out.push({ local: "*", source: segs.join("::"), imported: "*", wildcard: true });
+    else if (last === "self") out.push({ local: as ? as[2]! : segs[segs.length - 1]!, source: segs.join("::"), imported: "*", wildcard: false });
+    else out.push({ local: as ? as[2]! : last, source: segs.join("::"), imported: last, wildcard: false });
+  };
+  walk("", text.replace(/^\s*(pub(\([^)]*\))?\s+)?use\s+/, "").replace(/;\s*$/, ""));
+  return out;
+}
+
 const stringValue = (n: TsNode | null | undefined) => (n ? n.text.replace(/^['"`]|['"`]$/g, "") : undefined);
 
 function collectImports(lang: LangId, node: TsNode, out: ImportBinding[], flags: { hasImports: boolean }): void {
@@ -581,9 +645,58 @@ function collectImports(lang: LangId, node: TsNode, out: ImportBinding[], flags:
     }
     return;
   }
+  if (lang === "go") {
+    // import "a/b/pricing"   import p "a/b/pricing"   import . "a/b/pricing"
+    if (node.type === "import_spec") {
+      flags.hasImports = true;
+      const source = stringValue(node.childForFieldName("path"));
+      if (!source) return;
+      const name = node.childForFieldName("name")?.text;
+      if (name === "_") return;
+      if (name === ".") out.push({ local: "*", imported: "*", source, kind: "wildcard" });
+      else out.push({ local: name ?? source.split("/").pop()!, imported: "*", source, kind: "namespace" });
+    }
+    return;
+  }
+  if (lang === "java") {
+    // import a.b.C;   import static a.b.C.m;   import a.b.*;   import static a.b.C.*;
+    if (node.type === "import_declaration") {
+      flags.hasImports = true;
+      const m = /^import\s+(static\s+)?([\w.]+?)(\.\*)?\s*;/.exec(node.text);
+      if (!m) return;
+      const isStatic = !!m[1];
+      const name = m[2]!;
+      if (m[3]) out.push({ local: "*", imported: "*", source: name, kind: "wildcard" });
+      else if (isStatic) {
+        const cls = name.slice(0, name.lastIndexOf("."));
+        out.push({ local: name.split(".").pop()!, imported: name.split(".").pop()!, source: cls, kind: "named" });
+      } else out.push({ local: name.split(".").pop()!, imported: name.split(".").pop()!, source: name, kind: "named" });
+    }
+    return;
+  }
+  if (lang === "rust") {
+    if (node.type === "use_declaration") {
+      flags.hasImports = true;
+      for (const u of expandRustUse(node.text)) {
+        if (u.wildcard) out.push({ local: "*", imported: "*", source: u.source, kind: "wildcard" });
+        else if (u.imported === "*") out.push({ local: u.local, imported: "*", source: u.source, kind: "namespace" });
+        else out.push({ local: u.local, imported: u.imported, source: u.source, kind: "named" });
+      }
+    }
+    return;
+  }
   if (lang === "python") {
     if (node.type === "import_statement") {
       flags.hasImports = true;
+      // import pricing   import shop.pricing as p   (the module is then used as pricing.f())
+      for (const n of node.childrenForFieldName("name")) {
+        if (!n) continue;
+        if (n.type === "aliased_import") {
+          const name = n.childForFieldName("name")?.text;
+          const alias = n.childForFieldName("alias")?.text;
+          if (name && alias) out.push({ local: alias, imported: "*", source: name, kind: "namespace" });
+        } else out.push({ local: n.text.split(".")[0]!, imported: "*", source: n.text, kind: "namespace" });
+      }
     } else if (node.type === "import_from_statement") {
       flags.hasImports = true;
       const source = node.childForFieldName("module_name")?.text;

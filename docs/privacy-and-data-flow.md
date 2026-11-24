@@ -13,6 +13,7 @@ under your own accounts.
 | Your code, prompts, files the agent reads | The agent you run (Claude, Codex, …) and that vendor's model service | Whenever you run that agent. Governed by your agreement with the vendor, not by Synapse |
 | Collaboration state (agents, tasks, messages, decisions, ownership, audit) | `.synapse/` in your repository, on your machine | Always. Not sent anywhere |
 | Decision log Markdown | `decisionLogPath` in your repository | When decisions change. You decide whether to commit it |
+| Agents' conversations (prompts, guidance, messages, tool calls) | `.synapse/transcripts/<agent>.json` | Always, for the agent detail view. Known secret formats are masked; at most 400 entries per agent; deleted with the agent. Not sent anywhere |
 | Core log | `.synapse/core.log` | Always. Known secret formats are masked |
 | Crash reports | `~/.synapse-ide/crash-reports/` | When the core crashes. Redacted (secrets masked, home directory replaced by `~`). Never sent; attach one to a bug report yourself if you want |
 | Your agents' work in progress (team mode only) | Your own git remote, `refs/synapse/team/<name>/` | Only when you turn team mode on. Anyone who can read the remote can read it; `synapse team leave` removes it |

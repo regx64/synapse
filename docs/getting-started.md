@@ -21,7 +21,7 @@ npm link -w packages/cli
 ```
 
 That puts `synapse` on your PATH. The Synapse IDE build (`node build/build.mjs`)
-includes the same features with a board in the editor; the IDE opens a
+includes the same features in the editor (agents, home tab, agent detail); the IDE opens a
 walkthrough the first time.
 
 ## 2. Prepare a repository

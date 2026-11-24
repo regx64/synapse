@@ -65,9 +65,30 @@ exports.run = async function run() {
     const alpha = (await client.call("agents.list")).find((a) => a.id === "alpha");
     assert.equal(alpha.policy.network, "deny");
 
+    // The UI: Synapse Dark and a quieter workbench are the defaults.
+    const cfg = vscode.workspace.getConfiguration();
+    for (const [key, want] of [
+      ["workbench.colorTheme", "Synapse Dark"],
+      ["workbench.activityBar.location", "hidden"],
+      ["workbench.statusBar.visible", false],
+      ["editor.minimap.enabled", false],
+      ["workbench.startupEditor", "none"],
+    ]) assert.deepEqual(cfg.inspect(key).defaultValue, want, `default of ${key}`);
+    assert.match(cfg.get("editor.fontFamily"), /^'JetBrains Mono'/);
+
+    // The home tab opens as the first, pinned editor tab.
+    const homeTab = await waitFor(() => vscode.window.tabGroups.all.flatMap((g) => g.tabs).find((t) => t.input instanceof vscode.TabInputWebview && t.input.viewType.endsWith("synapse.home")), "home tab");
+    assert.ok(homeTab.isPinned, "home tab is pinned");
+    assert.equal(vscode.window.tabGroups.all[0].tabs.indexOf(homeTab), 0, "home tab comes first");
+    for (const c of ["synapse.openHome", "synapse.showFiles", "synapse.showAgents", "synapse.showDetail", "synapse.enableTeam", "synapse.agents.focus", "synapse.detail.focus", "synapse.selectAgent", "synapse.nextAgent", "synapse.focusGuidance"]) assert.ok(commands.includes(c), c);
+
+    // Each agent's conversation is kept by the core for the detail view.
+    const convo = await client.call("agents.transcript", { id: "alpha" });
+    assert.ok(convo.some((e) => e.kind === "prompt") && convo.some((e) => e.kind === "end"), "alpha's conversation");
+
     // Phase 3: tasks created through the core show up for the extension's commands.
     await client.call("tasks.create", { title: "Smoke task", agentId: "beta" });
-    for (const c of ["synapse.editPolicy", "synapse.newTask", "synapse.initConfig", "synapse.pinDecision", "synapse.steerAgent", "synapse.takeover", "synapse.liveDiff"]) assert.ok(commands.includes(c), c);
+    for (const c of ["synapse.editPolicy", "synapse.newTask", "synapse.initConfig", "synapse.pinDecision", "synapse.steerAgent", "synapse.takeover", "synapse.liveDiff", "synapse.teamAdopt"]) assert.ok(commands.includes(c), c);
   } finally {
     await client.call("core.shutdown").catch(() => {});
     client.close();

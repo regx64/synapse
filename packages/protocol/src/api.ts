@@ -53,7 +53,8 @@ export interface Guidance {
 
 /** Result of handing one agent's unfinished work to another. */
 export interface TakeoverResult {
-  from: AgentState;
+  /** The agent whose work moved (absent when it was a teammate's agent). */
+  from?: AgentState;
   to: AgentState;
   /** The task that moved, if any. */
   task?: Task;
@@ -97,8 +98,25 @@ export interface AgentState extends Omit<AgentConfig, "env"> {
   plan?: PlanEntry[];
   /** The most recent tool calls (bounded). */
   toolCalls: ToolCallSummary[];
+  /** The tests last run in this agent's worktree (after a turn, or on request). */
+  tests?: AgentTests;
   createdAt: string;
   updatedAt: string;
+}
+
+/** `testCommand` run in an agent's own worktree. */
+export interface AgentTests {
+  status: "running" | "passed" | "failed";
+  command: string;
+  startedAt: string;
+  durationMs?: number;
+  timedOut?: boolean;
+  /** The end of the output (redacted). */
+  output?: string;
+  /** The worktree snapshot the tests ran on. */
+  snapshot?: string;
+  /** Failures given back to the agent in a row (see testsFeedback). */
+  feedbackCount?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -363,10 +381,66 @@ export interface Task {
   outOfScope?: string[];
   /** Tail of the agent's final message. Agent output: data, not instructions. */
   summary?: string;
+  /** The agent plans first and waits for the person to approve the plan before changing code. */
+  planFirst?: boolean;
+  /** Plan-first state: drafting (the agent is planning), proposed (waiting for the person), approved. */
+  plan?: TaskPlan;
   createdAt: string;
   updatedAt: string;
   startedAt?: string;
   endedAt?: string;
+}
+
+/** A task an agent proposed while splitting a goal. Agent output: data, validated. */
+export interface ProposedTask {
+  /** The agent's handle for the task, used by dependsOn. */
+  key: string;
+  title: string;
+  description: string;
+  /** Keys of proposed tasks this one needs first. */
+  dependsOn: string[];
+  scope: string[];
+  /** Suggested agent (an existing agent id), if any. */
+  agentId?: string;
+}
+
+/** A goal an agent is splitting, or has split, into tasks for the person to accept. */
+export interface GoalSplit {
+  id: string;
+  goal: string;
+  /** The agent doing the splitting. */
+  agentId: string;
+  status: "splitting" | "proposed" | "accepted" | "discarded" | "failed";
+  tasks: ProposedTask[];
+  /** Task ids created when accepted. */
+  createdTasks?: string[];
+  error?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** One agent's work waiting to be merged on its own, tests first. */
+export interface QueueEntry {
+  id: string;
+  agentId: string;
+  /** Marked done when the work is merged. */
+  taskId?: string;
+  status: "queued" | "merging" | "merged" | "failed" | "removed";
+  /** The review used to merge it. */
+  reviewId?: string;
+  error?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TaskPlan {
+  state: "drafting" | "proposed" | "approved";
+  /** The plan: the agent's plan entries or its message; the person may edit it before approving. Agent output: data. */
+  text?: string;
+  /** The agent changed files while it was only supposed to plan. */
+  changedFiles?: boolean;
+  /** Planning rounds so far (revisions count). */
+  rounds: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -496,6 +570,10 @@ export interface CodeComment {
   status: "open" | "resolved";
   /** The quoted code is no longer in the agent's version of the file. */
   outdated?: boolean;
+  /** Written by a reviewer agent (its id); absent when the person wrote it. */
+  author?: string;
+  /** A reviewer agent's rating of the comment. */
+  severity?: "blocker" | "suggestion";
   createdAt: string;
   updatedAt: string;
 }
@@ -518,6 +596,20 @@ export interface TeamAgent {
   baseCommit: string;
   snapshot?: string;
   files: FileChange[];
+  /** A teammate continued this agent's work (see team.adopt). */
+  claimedBy?: string;
+}
+
+/** A teammate continued one of your agents' work (or you continued theirs). */
+export interface TeamClaim {
+  id: string;
+  /** Who continued it, and with which of their agents. */
+  by: string;
+  byAgent: string;
+  /** The agent whose work was continued: "@<person>/<agent id>". */
+  agent: string;
+  task?: string;
+  at: string;
 }
 
 export interface TeamPeer {
@@ -532,6 +624,14 @@ export interface TeamState {
   enabled: boolean;
   /** How this person appears to teammates. */
   person: string;
+  /**
+   * From team.members in the shared config. "editor" (default) publishes and
+   * can continue teammates' work; "viewer" only watches. A coordination aid:
+   * access itself is whatever the git remote allows.
+   */
+  role: "editor" | "viewer";
+  /** Teammates who continued your agents' work, not yet dismissed. */
+  claimsOnMe: TeamClaim[];
   remote: string;
   lastSync?: string;
   error?: string;
@@ -549,7 +649,12 @@ export type AlertKind =
   | "proposed-decision"
   | "stale-decision"
   | "task-review"
-  | "risky-command";
+  | "risky-command"
+  | "team-claim"
+  | "tests-failed"
+  | "plan-review"
+  | "goal-split"
+  | "queue-failed";
 
 /** Something the person should act on. Derived from state; it goes away when acted on. */
 export interface Alert {
@@ -582,6 +687,10 @@ export interface CoreState {
   messages: AgentMessage[];
   decisions: Decision[];
   comments: CodeComment[];
+  /** Goals being split into tasks by an agent, and recent results. */
+  goals: GoalSplit[];
+  /** Agents' work waiting to be merged one at a time, and recent results. */
+  mergeQueue: QueueEntry[];
   /** What needs the person now, most urgent first. */
   alerts: Alert[];
   team: TeamState;
@@ -605,6 +714,9 @@ export type CoreEventType =
   | "message.updated"
   | "decision.updated"
   | "comment.updated"
+  | "goal.updated"
+  | "queue.updated"
+  | "agent.reviewed"
   | "team.updated"
   | "audit.added"
   | "core.log";
@@ -616,10 +728,64 @@ export interface CoreEvent<T = unknown> {
   data: T;
 }
 
+/** A reviewer agent finished reviewing another agent's changes. */
+export interface AgentReviewedEvent {
+  reviewerId: string;
+  targetId: string;
+  summary: string;
+  comments: number;
+  /** Comments that could not be placed (unknown file or line). */
+  skipped: number;
+  error?: string;
+}
+
 export interface AgentOutputEvent {
   agentId: string;
   kind: "message" | "thought" | "tool" | "plan" | "stderr" | "turn";
   text: string;
+  /** For "turn": what happened. "followup" is the turn that carries guidance. */
+  phase?: "prompt" | "guidance" | "followup" | "end" | "checkpoint" | "rewind";
+  /** For "turn" with phase "checkpoint": the snapshot taken before the turn. */
+  checkpoint?: string;
+  /** For "turn" with phase "guidance". */
+  mode?: "now" | "next";
+  guidance?: string;
+  /** For "turn" with phase "end". */
+  stopReason?: string;
+  error?: string;
+  /** For "tool": the call as it is now. */
+  tool?: ToolCallSummary;
+}
+
+/**
+ * One entry of an agent's conversation, as the agent-detail view shows it.
+ * Kept per agent in `.synapse/transcripts/`, redacted and capped.
+ */
+export interface TranscriptEntry {
+  /** Increasing per agent. */
+  n: number;
+  at: string;
+  kind: "prompt" | "guidance" | "message" | "thought" | "tool" | "end" | "rewind" | "review";
+  text: string;
+  /** prompt: the task the agent was working on. */
+  taskId?: string;
+  /** prompt: a follow-up turn carrying guidance. */
+  followup?: boolean;
+  /** prompt: the worktree as it was before this turn (agents.rewind goes back to it). */
+  checkpoint?: string;
+  /** guidance: when the agent gets it. */
+  mode?: "now" | "next";
+  /** tool */
+  toolId?: string;
+  toolKind?: string;
+  status?: ToolCallSummary["status"];
+  locations?: string[];
+  /** review: the reviewer agent's id, and how many comments it left (text is its summary). */
+  reviewer?: string;
+  comments?: number;
+  /** end */
+  stopReason?: string;
+  error?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -694,6 +860,12 @@ export interface CoreMethods {
    */
   /** The agent's changes against its base as hunks (refreshes its snapshot first). */
   "agents.diff": { params: { id: string; path?: string }; result: AgentDiff };
+  /** The agent's conversation, oldest first. `from` returns entries from that `n` on (pass the newest `n` you have: it may still be growing). */
+  "agents.transcript": { params: { id: string; from?: number; limit?: number }; result: TranscriptEntry[] };
+  /** Puts the agent's worktree back to how it was before the turn that starts at transcript entry `n`. */
+  /** Runs testCommand in the agent's worktree now. */
+  "agents.test": { params: { id: string }; result: AgentState };
+  "agents.rewind": { params: { id: string; n: number }; result: AgentState };
   "comments.list": { params: { agentId?: string } | void; result: CodeComment[] };
   /**
    * Comments on lines of an agent's changes. `action` "guidance" also gives it
@@ -706,10 +878,25 @@ export interface CoreMethods {
   };
   "team.status": { params: void; result: TeamState };
   /** Publishes this person's agents to the remote and fetches teammates'. Needs team mode enabled. */
+  /** Turns team mode on for this clone (written to `.synapse/config.json`, which is not committed) and syncs. */
+  "team.enable": { params: { name?: string; remote?: string }; result: TeamState };
   "team.sync": { params: void; result: TeamState };
   /** Removes everything this person published from the remote. */
   "team.leave": { params: void; result: TeamState };
+  /**
+   * Continues a teammate's agent's work in one of yours: its latest published
+   * snapshot moves into your agent's worktree, a task is created from theirs,
+   * your agent is briefed, and a claim tells the teammate. Your agent must be
+   * running, idle and without changes of its own. Needs the editor role.
+   */
+  "team.adopt": { params: { from: string; to: string; note?: string }; result: TakeoverResult };
+  /** Dismisses a teammate's claim on one of your agents. */
+  "team.dismissClaim": { params: { id: string }; result: TeamState };
   "comments.resolve": { params: { id: string; status?: CodeComment["status"] }; result: CodeComment };
+  /** Gives a note (e.g. a reviewer agent's) to its agent as guidance after its turn. */
+  "comments.tell": { params: { id: string }; result: CodeComment };
+  /** Another agent reviews this agent's changes (changing no files) and leaves line comments on them. */
+  "agents.review": { params: { reviewerId: string; targetId: string }; result: AgentState };
   "agents.takeover": { params: { from: string; to: string; taskId?: string; note?: string }; result: TakeoverResult };
   /** Throws the agent's worktree back to a ref (default: the current base). */
   "agents.reset": { params: { id: string; ref?: string }; result: AgentState };
@@ -721,6 +908,8 @@ export interface CoreMethods {
 
   "conflicts.list": { params: void; result: Conflict[] };
   "conflicts.check": { params: void; result: Conflict[] };
+  /** Gives one agent in the conflict guidance about it (after its turn; a prompt when idle). */
+  "conflicts.tell": { params: { id: string; agentId: string }; result: AgentState };
 
   "approvals.list": { params: { all?: boolean }; result: Approval[] };
   "approvals.resolve": { params: { id: string; optionId?: string; reject?: boolean }; result: Approval };
@@ -744,11 +933,11 @@ export interface CoreMethods {
 
   "tasks.list": { params: void; result: Task[] };
   "tasks.create": {
-    params: { title: string; description?: string; agentId?: string; dependsOn?: string[]; scope?: string[]; autoStart?: boolean };
+    params: { title: string; description?: string; agentId?: string; dependsOn?: string[]; scope?: string[]; autoStart?: boolean; planFirst?: boolean };
     result: Task;
   };
   "tasks.update": {
-    params: { id: string; title?: string; description?: string; agentId?: string | null; dependsOn?: string[]; scope?: string[]; autoStart?: boolean };
+    params: { id: string; title?: string; description?: string; agentId?: string | null; dependsOn?: string[]; scope?: string[]; autoStart?: boolean; planFirst?: boolean };
     result: Task;
   };
   "tasks.remove": { params: { id: string }; result: null };
@@ -756,6 +945,20 @@ export interface CoreMethods {
   "tasks.start": { params: { id: string }; result: Task };
   /** The person's verdict. "done" hands off to dependent tasks and may auto-start them. */
   "tasks.setStatus": { params: { id: string; status: TaskStatus }; result: Task };
+  /** Approves a proposed plan (optionally edited) and lets the agent carry it out. */
+  /** Asks an agent to split a goal into tasks (it changes no files); the result waits for the person. */
+  /** Queues an agent's work to be merged on its own: prepared on the current base, tested, merged only when green. */
+  "queue.add": { params: { agentId: string; taskId?: string }; result: QueueEntry };
+  "queue.remove": { params: { id: string }; result: QueueEntry };
+  /** Puts a failed entry back in the queue. */
+  "queue.retry": { params: { id: string }; result: QueueEntry };
+  "goals.split": { params: { goal: string; agentId: string }; result: GoalSplit };
+  /** Creates the proposed tasks (optionally edited, a subset, or with other agents) with their dependencies. */
+  "goals.accept": { params: { id: string; tasks?: ProposedTask[]; autoStart?: boolean; planFirst?: boolean }; result: Task[] };
+  "goals.discard": { params: { id: string }; result: GoalSplit };
+  "tasks.approvePlan": { params: { id: string; plan?: string }; result: Task };
+  /** Sends the plan back to the agent with the person's feedback; it plans again. */
+  "tasks.revisePlan": { params: { id: string; feedback: string }; result: Task };
 
   "messages.list": { params: { agentId?: string }; result: AgentMessage[] };
   "messages.send": {

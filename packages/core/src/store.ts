@@ -11,6 +11,8 @@ import type {
   Conflict,
   CodeComment,
   Decision,
+  GoalSplit,
+  QueueEntry,
   TeamState,
   Task,
   CoreEvent,
@@ -33,6 +35,8 @@ interface PersistedState {
   messages?: AgentMessage[];
   decisions?: Decision[];
   comments?: CodeComment[];
+  goals?: GoalSplit[];
+  mergeQueue?: QueueEntry[];
   audit?: AuditEntry[];
 }
 
@@ -56,8 +60,10 @@ export class StateStore extends EventEmitter {
   private readonly tasks = new Map<string, Task>();
   private readonly messages = new Map<string, AgentMessage>();
   private readonly decisions = new Map<string, Decision>();
+  private readonly goals = new Map<string, GoalSplit>();
+  private readonly queue = new Map<string, QueueEntry>();
   private readonly comments = new Map<string, CodeComment>();
-  private team: TeamState = { enabled: false, person: "", remote: "origin", peers: [] };
+  private team: TeamState = { enabled: false, person: "", role: "editor", remote: "origin", peers: [], claimsOnMe: [] };
   private audit: AuditEntry[] = [];
   private readonly backlog: CoreEvent[] = [];
   private readonly persistSoon = debounce(() => this.persistNow(), 200);
@@ -108,6 +114,8 @@ export class StateStore extends EventEmitter {
       messages: this.listMessages(),
       decisions: this.listDecisions(),
       comments: this.listComments(),
+      goals: this.listGoals(),
+      mergeQueue: this.listQueue(),
       audit: this.audit.slice(-200),
       seq: this.seq,
     };
@@ -292,6 +300,48 @@ export class StateStore extends EventEmitter {
     return d;
   }
 
+  listQueue(): QueueEntry[] {
+    return [...this.queue.values()];
+  }
+
+  getQueueEntry(id: string): QueueEntry | undefined {
+    return this.queue.get(id);
+  }
+
+  putQueueEntry(e: QueueEntry): QueueEntry {
+    e.updatedAt = nowIso();
+    this.queue.set(e.id, e);
+    const closed = [...this.queue.values()].filter((x) => x.status === "merged" || x.status === "removed");
+    for (const old of closed.slice(0, Math.max(0, closed.length - 20))) this.queue.delete(old.id);
+    this.emitEvent("queue.updated", e);
+    this.persistSoon();
+    return e;
+  }
+
+  listGoals(): GoalSplit[] {
+    return [...this.goals.values()];
+  }
+
+  getGoal(id: string): GoalSplit | undefined {
+    return this.goals.get(id);
+  }
+
+  putGoal(g: GoalSplit): GoalSplit {
+    g.updatedAt = nowIso();
+    this.goals.set(g.id, g);
+    // Keep the open ones and the 20 most recent others.
+    const closed = [...this.goals.values()].filter((x) => x.status !== "splitting" && x.status !== "proposed");
+    for (const old of closed.slice(0, Math.max(0, closed.length - 20))) this.goals.delete(old.id);
+    this.emitEvent("goal.updated", g);
+    this.persistSoon();
+    return g;
+  }
+
+  /** Where per-repository files other than state.json go (undefined when ephemeral). */
+  get dataDir(): string | undefined {
+    return this.stateFile ? path.dirname(this.stateFile) : undefined;
+  }
+
   getTeam(): TeamState {
     return this.team;
   }
@@ -349,6 +399,8 @@ export class StateStore extends EventEmitter {
     for (const m of data.messages ?? []) this.messages.set(m.id, m);
     for (const d of data.decisions ?? []) this.decisions.set(d.id, d);
     for (const c of data.comments ?? []) this.comments.set(c.id, c);
+    for (const e of data.mergeQueue ?? []) this.queue.set(e.id, e.status === "merging" ? { ...e, status: "queued" } : e);
+    for (const g of data.goals ?? []) this.goals.set(g.id, g.status === "splitting" ? { ...g, status: "failed", error: "Synapse restarted while the agent was splitting the goal" } : g);
     this.audit = data.audit ?? [];
   }
 
@@ -363,6 +415,8 @@ export class StateStore extends EventEmitter {
       messages: this.listMessages(),
       decisions: this.listDecisions(),
       comments: this.listComments(),
+      goals: this.listGoals(),
+      mergeQueue: this.listQueue(),
       audit: this.audit.slice(-500),
     };
     fs.mkdirSync(path.dirname(this.stateFile), { recursive: true });

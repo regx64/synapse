@@ -37,7 +37,7 @@ needs a machine or CI runner with the upstream toolchain (see
 3. only then a core patch in `patches/`, registered in `patches/series.json`
    with an owner and a reason.
 
-**Budget: 20 core patches** (`build/check-patches.mjs`, part of `npm run check`).
+**Budget: 60 core patches** (`build/check-patches.mjs`, part of `npm run check`).
 Current count: **2**:
 
 - `0001-publisher-from-product.patch` makes the Windows and macOS file
@@ -75,7 +75,7 @@ Record these at every sync; together they decide gate G3:
 | Metric | Source | G1 target | G3 signal |
 | --- | --- | --- | --- |
 | Person-hours per sync | the sync issue | one sync within 2 days | 4+ days a month |
-| Core patches | `node build/check-patches.mjs` | ≤ 5 | > 20, or 3+ UX needs the extension API cannot meet |
+| Core patches | `node build/check-patches.mjs` | ≤ 5 | > 60, or 3+ UX needs the extension API cannot meet |
 | Days behind upstream | `node build/check-upstream.mjs` | — | > 14 |
 
 ## Branding
@@ -169,6 +169,11 @@ with AI features off, nothing uses it.
 ## Build and distribution
 
 Phase 1: unsigned development builds on Linux x64, macOS arm64 and Windows x64
-(`.github/workflows/dev-build.yml`). Before the public beta (phase 4): macOS
+(`.github/workflows/dev-build.yml`). After each build, `build/smoke-app.mjs`
+launches the app (under Xvfb on Linux) with Playwright's Electron driver and
+checks it as a product: Synapse name in the window title, synapse-core started
+by the built-in extension for an open repository, the board rendered, no
+Copilot, no telemetry notice, no "VS Code" in UI messages. The screenshot is
+uploaded with the build. Before the public beta (phase 4): macOS
 signing and notarization (arm64 and x64), Windows signing, Linux packages, an
 update server.

@@ -1,11 +1,13 @@
+import * as fs from "node:fs";
 import * as os from "node:os";
-import type { AgentOwnership, AgentState, FileChange, TeamAgent, TeamPeer, TeamState } from "@synapse/protocol";
+import * as path from "node:path";
+import type { AgentOwnership, AgentState, FileChange, TeamAgent, TeamClaim, TeamPeer, TeamState } from "@synapse/protocol";
 import { ErrorCodes, RpcError } from "@synapse/protocol";
 import type { SynapseConfig } from "./config.js";
 import { git, runGit } from "./git.js";
 import { analyzeSnapshot, type FileDetail } from "./ownership.js";
 import type { StateStore } from "./store.js";
-import { debounce, nowIso } from "./util.js";
+import { debounce, nowIso, randomId } from "./util.js";
 
 /**
  * Team mode: several people, each with their own Synapse and agents, on one
@@ -34,6 +36,14 @@ interface Lane {
   updatedAt: string;
   baseRef: string;
   agents: { agentId: string; name: string; color: string; status: AgentState["status"]; task?: string; baseCommit: string; snapshot?: string; files: FileChange[] }[];
+  /** Teammates' agents this person continued (team.adopt). */
+  claims?: TeamClaim[];
+}
+
+/** What this person keeps between runs: claims they made, and teammates' claims they dismissed. */
+interface TeamFile {
+  claims: TeamClaim[];
+  dismissed: string[];
 }
 
 export interface TeamDeps {
@@ -64,6 +74,7 @@ export class TeamService {
   private readonly analyses = new Map<string, { files: FileChange[]; details: Map<string, FileDetail> }>();
   private peerAgents: PeerAgent[] = [];
   private syncing?: Promise<TeamState>;
+  private saved: TeamFile = { claims: [], dismissed: [] };
   /** Publish soon after local work changes, at most every 15 s. */
   readonly syncSoon = debounce(() => void this.sync().catch(() => {}), 15_000);
 
@@ -75,7 +86,40 @@ export class TeamService {
 
   private settings() {
     const t = this.deps.config().team ?? {};
-    return { enabled: !!t.enabled, remote: t.remote || "origin", intervalSec: Math.max(15, t.intervalSec ?? 60), name: t.name };
+    return { enabled: !!t.enabled, remote: t.remote || "origin", intervalSec: Math.max(15, t.intervalSec ?? 60), name: t.name, members: t.members ?? {} };
+  }
+
+  role(): TeamState["role"] {
+    return this.settings().members[this.person] === "viewer" ? "viewer" : "editor";
+  }
+
+  private file(): string | undefined {
+    return this.store.dataDir ? path.join(this.store.dataDir, "team.json") : undefined;
+  }
+
+  private save(): void {
+    const f = this.file();
+    if (!f) return;
+    fs.mkdirSync(path.dirname(f), { recursive: true });
+    fs.writeFileSync(f, JSON.stringify(this.saved, null, 2));
+  }
+
+  /** Records that one of this person's agents continued a teammate's agent's work; published with the next sync. */
+  addClaim(c: Omit<TeamClaim, "id" | "by" | "at">): TeamClaim {
+    const claim: TeamClaim = { ...c, id: randomId("claim"), by: this.person, at: nowIso() };
+    this.saved.claims = [...this.saved.claims.filter((x) => x.agent !== c.agent), claim].slice(-200);
+    this.save();
+    this.syncSoon();
+    return claim;
+  }
+
+  dismissClaim(id: string): TeamState {
+    const t = this.store.getTeam();
+    if (!t.claimsOnMe.some((c) => c.id === id)) throw new RpcError(ErrorCodes.NotFound, `No claim "${id}"`);
+    this.saved.dismissed = [...this.saved.dismissed, id].slice(-500);
+    this.save();
+    this.store.setTeam({ ...t, claimsOnMe: t.claimsOnMe.filter((c) => c.id !== id) });
+    return this.store.getTeam();
   }
 
   /** Resolves who this person is and starts syncing if team mode is on. */
@@ -83,7 +127,13 @@ export class TeamService {
     const s = this.settings();
     const fromGit = (await runGit(this.store.repoRoot, ["config", "user.name"])).stdout.trim();
     this.person = slug(s.name || fromGit || os.userInfo().username) || "me";
-    this.store.setTeam({ ...this.store.getTeam(), enabled: s.enabled, person: this.person, remote: s.remote });
+    try {
+      const f = this.file();
+      if (f && fs.existsSync(f)) this.saved = { claims: [], dismissed: [], ...JSON.parse(fs.readFileSync(f, "utf8")) };
+    } catch {
+      /* start fresh */
+    }
+    this.store.setTeam({ ...this.store.getTeam(), enabled: s.enabled, person: this.person, role: this.role(), remote: s.remote });
     if (!s.enabled) return;
     this.timer = setInterval(() => void this.sync().catch(() => {}), s.intervalSec * 1000);
     this.timer.unref();
@@ -99,6 +149,14 @@ export class TeamService {
     return this.store.getTeam();
   }
 
+  /** A teammate's agent as last fetched. */
+  peerAgent(id: string): TeamAgent | undefined {
+    return this.store
+      .getTeam()
+      .peers.flatMap((p) => p.agents)
+      .find((a) => a.id === id);
+  }
+
   /** Teammates' agents for conflict detection. */
   peers(): PeerAgent[] {
     return this.peerAgents;
@@ -110,9 +168,10 @@ export class TeamService {
     if (this.syncing) return this.syncing;
     this.syncing = (async () => {
       try {
-        await this.publish(s.remote);
-        const peers = await this.fetchPeers(s.remote);
-        this.store.setTeam({ enabled: true, person: this.person, remote: s.remote, lastSync: nowIso(), peers });
+        // Viewers only watch: nothing of theirs is published.
+        if (this.role() === "editor") await this.publish(s.remote);
+        const { peers, claimsOnMe } = await this.fetchPeers(s.remote);
+        this.store.setTeam({ enabled: true, person: this.person, role: this.role(), remote: s.remote, lastSync: nowIso(), peers, claimsOnMe });
         this.deps.onPeersChanged();
       } catch (err) {
         const message = (err as Error).message.split("\n")[0]!.slice(0, 300);
@@ -157,6 +216,7 @@ export class TeamService {
         const task = a.currentTaskId ? this.store.getTask(a.currentTaskId)?.title : undefined;
         return { agentId: a.id, name: a.name, color: a.color, status: a.status, task, baseCommit: a.worktree.baseCommit, snapshot: own?.snapshot, files: own?.files ?? [] };
       }),
+      claims: this.saved.claims,
     };
     const blob = await git(repo, ["hash-object", "-w", "--stdin"], { input: JSON.stringify(lane) });
     const tree = await git(repo, ["mktree"], { input: `100644 blob ${blob}\tlane.json\n` });
@@ -173,7 +233,7 @@ export class TeamService {
   }
 
   /** Fetches teammates' lanes and snapshots and analyzes what their agents change. */
-  private async fetchPeers(remote: string): Promise<TeamPeer[]> {
+  private async fetchPeers(remote: string): Promise<{ peers: TeamPeer[]; claimsOnMe: TeamClaim[] }> {
     const repo = this.store.repoRoot;
     await git(repo, ["fetch", "--quiet", "--prune", "--no-tags", remote, `+${TEAM}/*:${PEERS}/*`]);
     const lanes = (await git(repo, ["for-each-ref", "--format=%(refname)", `${PEERS}/`]))
@@ -181,11 +241,13 @@ export class TeamService {
       .filter((r) => /\/lane$/.test(r));
     const peers: TeamPeer[] = [];
     const peerAgents: PeerAgent[] = [];
+    const claims: TeamClaim[] = [...this.saved.claims];
     for (const ref of lanes) {
       const person = ref.slice(PEERS.length + 1, -"/lane".length);
       if (!person || person === this.person || person.includes("/")) continue;
       const lane = await this.readLane(ref);
       if (!lane) continue;
+      for (const c of lane.claims ?? []) if (c.by === person) claims.push(c);
       const agents: TeamAgent[] = [];
       for (const a of lane.agents.slice(0, 50)) {
         const id = `@${person}/${a.agentId}`;
@@ -206,7 +268,12 @@ export class TeamService {
       peers.push({ person, updatedAt: lane.updatedAt, stale: Date.now() - Date.parse(lane.updatedAt) > STALE_MS, agents });
     }
     this.peerAgents = peerAgents;
-    return peers.sort((a, b) => a.person.localeCompare(b.person));
+    // Latest claim per agent; mark claimed teammates' agents, and collect claims on this person's agents.
+    const latest = new Map<string, TeamClaim>();
+    for (const c of claims.sort((a, b) => a.at.localeCompare(b.at))) latest.set(c.agent, c);
+    for (const p of peers) for (const a of p.agents) a.claimedBy = latest.get(a.id)?.by;
+    const claimsOnMe = [...latest.values()].filter((c) => c.agent.startsWith(`@${this.person}/`) && c.by !== this.person && !this.saved.dismissed.includes(c.id));
+    return { peers: peers.sort((a, b) => a.person.localeCompare(b.person)), claimsOnMe };
   }
 
   private async readLane(ref: string): Promise<Lane | undefined> {
@@ -225,6 +292,10 @@ export class TeamService {
         a.task = typeof a.task === "string" ? a.task.slice(0, 200) : undefined;
         a.files = Array.isArray(a.files) ? a.files.slice(0, 500) : [];
       }
+      lane.claims = (Array.isArray(lane.claims) ? lane.claims : [])
+        .filter((c) => c && typeof c.id === "string" && typeof c.by === "string" && typeof c.agent === "string" && /^@[a-z0-9-]+\/[a-z0-9-]+$/.test(c.agent) && typeof c.at === "string")
+        .slice(-200)
+        .map((c) => ({ id: c.id.slice(0, 60), by: c.by.slice(0, 40), byAgent: String(c.byAgent ?? "").slice(0, 40), agent: c.agent, task: typeof c.task === "string" ? c.task.slice(0, 200) : undefined, at: c.at }));
       return lane;
     } catch {
       return undefined;

@@ -122,7 +122,7 @@ export class CommentService {
     return this.store.listComments(agentId);
   }
 
-  async add(p: { agentId: string; path: string; line: number; endLine?: number; text: string; action?: CodeComment["action"] }): Promise<CodeComment> {
+  async add(p: { agentId: string; path: string; line: number; endLine?: number; text: string; action?: CodeComment["action"] }, by?: { author: string; severity?: CodeComment["severity"] }): Promise<CodeComment> {
     const agent = this.requireAgent(p?.agentId);
     const text = String(p.text ?? "").trim();
     if (!text) throw new RpcError(ErrorCodes.InvalidParams, "A comment needs some text");
@@ -144,6 +144,7 @@ export class CommentService {
 
     const now = nowIso();
     let c: CodeComment = { id: randomId("c"), agentId: agent.id, path: rel, line, endLine, quote, text, action, status: "open", createdAt: now, updatedAt: now };
+    if (by) c = { ...c, author: by.author, severity: by.severity };
     const where = `${rel}:${line}${endLine > line ? `-${endLine}` : ""}`;
     const block = `${text}\n\nThe code in question (${where}):\n\`\`\`\n${quote}\n\`\`\``;
     if (action === "guidance") {
@@ -154,6 +155,17 @@ export class CommentService {
       c = { ...c, taskId: t.id };
     }
     return this.store.putComment(c);
+  }
+
+  /** Gives a note to its agent as guidance (after its turn; at once when idle). */
+  tell(id: string): CodeComment {
+    const c = this.store.getComment(id);
+    if (!c) throw new RpcError(ErrorCodes.NotFound, `No comment "${id}"`);
+    if (c.action === "guidance") return c;
+    const where = `${c.path}:${c.line}${c.endLine > c.line ? `-${c.endLine}` : ""}`;
+    const by = c.author ? `A review by ${this.store.getAgent(c.author)?.name ?? c.author} says` : "The person says";
+    this.deps.agents.steer(c.agentId, `About ${where}: ${by}: ${c.text}\n\nThe code in question:\n\`\`\`\n${c.quote}\n\`\`\``, "next");
+    return this.store.putComment({ ...c, action: "guidance" });
   }
 
   resolve(id: string, status: CodeComment["status"] = "resolved"): CodeComment {

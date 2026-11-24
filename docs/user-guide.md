@@ -1,11 +1,44 @@
 # User guide
 
-Everything here works from the board in the Synapse IDE and from the
-`synapse` CLI; both call the same core.
+Everything here works in the Synapse IDE and from the `synapse` CLI; both
+call the same core.
+
+## The screen
+
+Synapse puts the agents first, in three columns:
+
+- **Left: agents.** Each agent with its color, status (working, needs you,
+  ready for review, error, idle), task and plan progress. **Files** switches
+  to the file explorer; the Agents button in its title switches back.
+  Teammates' agents are listed below yours in team mode. In a narrow side
+  bar the list becomes a column of dots.
+- **Middle: the home tab**, pinned as the first editor tab: what needs you,
+  every agent as a card, tasks, team and a Get started list; then **Tasks**,
+  **Decisions**, **Messages** and **Audit** in full. Files open as tabs next
+  to it. *Synapse: Open Home* brings it back.
+- **Right: the selected agent.** Its conversation (your prompts and guidance,
+  what it said, the tools it used, approvals it waits for), its plan and
+  its changes, and a box for guidance: **After this turn** or **Now**
+  (Ctrl/Cmd+Enter sends). The conversation is kept in
+  `.synapse/transcripts/`, redacted and capped at 400 entries per agent.
+- **Title bar:** how many agents are working, need you, are ready for review
+  or are in conflict. Click it for the home tab.
+
+The activity bar, status bar, layout controls and minimap are hidden by
+default; turn them back on in Settings (`workbench.activityBar.location`,
+`workbench.statusBar.visible`…). Below 1280 pixels the agent column hides
+itself and comes back when the window is wider; opened in a narrow window,
+it shows as a drawer over the editor area until the window is wide again or
+you close it (`synapse.autoHideAgentColumn` turns both off). The theme is **Synapse Dark**; the
+workbench uses Pretendard and editors JetBrains Mono (both ship with
+Synapse; `synapse.workbenchFont` turns the workbench font off). Synapse
+follows the editor's language: English or Korean (the Korean language pack
+is built in). When the window is in the background, approvals, agent errors
+and finished work become desktop notifications (`synapse.notifications.*`).
 
 ## Overview
 
-The board opens on **Overview**: first **Needs you**, only the things that
+The home tab opens on **Overview**: first **Needs you**, only the things that
 wait for you or can cause damage, most urgent first, each with its action
 right there:
 
@@ -176,7 +209,7 @@ class in it. Synapse fingerprints that code on the base branch (ignoring
 whitespace) and then watches it:
 
 - **An agent changes pinned code** in its worktree: a `decision` warning
-  shows on the board, in the Problems panel and in the combined review, before
+  shows on the home tab, in the Problems panel and in the combined review, before
   anything merges. It does not block the merge.
 - **The pinned code changes on the base branch** (a merge, or your own
   commits): the decision is marked *code changed* (or *gone from base*) on the
@@ -226,7 +259,7 @@ Each agent has a policy; `synapse.config.json` sets the default for all.
   `&&`, `||`, `;`, `|`) matches an allow pattern; any part matching a deny
   pattern refuses it; command substitutions always ask.
 - Network commands (curl, wget, git push/fetch, npm publish…) follow `network`.
-- Everything else follows `otherwise`; "ask" puts an approval card on the board.
+- Everything else follows `otherwise`; "ask" puts an approval card on the home tab and in the agent's conversation.
 
 Per agent: `synapse policy codex --set '{"network":"deny"}'`, or in the IDE,
 *Synapse: Edit Agent Permission Policy* opens the policy as JSON; saving
@@ -241,7 +274,7 @@ Policies govern what goes through Synapse. They are not an OS sandbox; see
 
 ## Combined review
 
-`synapse review` (or *Review & merge* on the board) merges every agent's work
+`synapse review` (or *Review & merge* on the home tab) merges every agent's work
 into `.synapse/review/<id>`, runs `setupCommand` and `testCommand` there, and
 shows files, owners, conflicts and test output. Merging fast-forwards your
 branch; it requires a clean checkout, an unmoved base, passing tests and no
@@ -277,8 +310,32 @@ synapse team leave
 the remote, like pushing a branch, so it is off by default; anyone who can
 read the remote can read it. `name` defaults to your git `user.name`.
 
+**Continuing a teammate's work.** When a teammate is away and their agent
+stopped halfway, **Continue with…** on its card (or `synapse team adopt
+@alice/claude codex`) moves its latest published work into one of your idle
+agents, creates a task from theirs and briefs your agent. Your teammate sees
+an alert at their next sync ("bob continued Claude's work"), with **Reset my
+agent** so the two of you don't keep working on the same changes, or
+**Dismiss**.
+
+**Roles.** In the shared `synapse.config.json`, `"members": { "carol":
+"viewer" }` makes Carol a viewer: her Synapse fetches and shows everyone's
+agents but publishes nothing and cannot continue others' work. Everyone else
+is an editor. Roles coordinate people; they are not access control, which is
+whatever your git remote allows.
+
 ## Privacy
 
 Synapse collects no telemetry and sends nothing about you. Crash reports of
 the core stay in `~/.synapse-ide/crash-reports/`. Details:
 [privacy and data flow](privacy-and-data-flow.md).
+
+## Keyboard
+
+| Keys (Windows/Linux · macOS) | Does |
+| --- | --- |
+| Ctrl+Alt+1…9 · ⌘⌥1…9 | select agent 1…9 and show its detail |
+| Ctrl+Alt+] / [ · ⌘⌥] / [ | next / previous agent |
+| Ctrl+Alt+G · ⌘⌥G | type guidance to the selected agent |
+| Ctrl+Alt+H · ⌘⌥H | open the home tab |
+| Ctrl/Cmd+Enter (in the guidance box) | send |
