@@ -61,7 +61,8 @@ export class LiveDiffPanel implements vscode.Disposable {
         const comments: CodeComment[] = (this.conn.state?.comments ?? []).filter((c) => c.agentId === this.agentId);
         const a = this.conn.state?.agents.find((x) => x.id === this.agentId);
         const agent = { name: a?.name ?? this.agentId, color: a?.color ?? "", working: a?.status === "working" };
-        void this.panel.webview.postMessage({ type: "data", diff, comments, agent });
+        const names = Object.fromEntries((this.conn.state?.agents ?? []).map((x) => [x.id, x.name]));
+        void this.panel.webview.postMessage({ type: "data", diff, comments, agent, names });
       } catch (err) {
         void vscode.window.showErrorMessage(l("Synapse: {0}", (err as Error).message));
       }
@@ -75,6 +76,9 @@ export class LiveDiffPanel implements vscode.Disposable {
       else if (m.type === "comment" && m.path && m.line && m.text) {
         const c = await this.conn.call("comments.add", { agentId: this.agentId, path: m.path, line: m.line, text: m.text, action: m.action });
         if (c.action === "task") void vscode.window.showInformationMessage(l("Synapse: created task {0} for this agent.", c.taskId ?? ""));
+        await this.refresh(true);
+      } else if (m.type === "tell" && m.id) {
+        await this.conn.call("comments.tell", { id: m.id });
         await this.refresh(true);
       } else if (m.type === "resolve" && m.id) {
         await this.conn.call("comments.resolve", { id: m.id, status: m.status });

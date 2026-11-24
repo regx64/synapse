@@ -61,6 +61,7 @@ const ALLOWED_COMMANDS = new Set([
   "synapse.showAgents",
   "synapse.editPolicy",
   "synapse.enableTeam",
+  "synapse.reviewAgent",
   "workbench.action.openSettings",
 ]);
 

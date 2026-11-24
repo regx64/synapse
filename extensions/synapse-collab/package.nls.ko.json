@@ -71,5 +71,6 @@
   "cmd.selectAgent": "에이전트 선택",
   "cmd.nextAgent": "다음 에이전트",
   "cmd.previousAgent": "이전 에이전트",
-  "cmd.focusGuidance": "선택한 에이전트에게 지시 추가"
+  "cmd.focusGuidance": "선택한 에이전트에게 지시 추가",
+  "cmd.reviewAgent": "다른 에이전트에게 변경 검토 요청…"
 }

@@ -116,6 +116,12 @@ export function attention(conn: CoreConnection): vscode.Disposable {
           }
           return;
         }
+        case "agent.reviewed": {
+          const r = ev.data as { reviewerId: string; targetId: string; comments: number; error?: string };
+          const msg = r.error ? l("{0} could not review {1}: {2}", name(r.reviewerId), name(r.targetId), r.error) : l("{0} reviewed {1}: {2} comments", name(r.reviewerId), name(r.targetId), r.comments);
+          void vscode.window.showInformationMessage(msg, l("Open live changes")).then((x) => x && vscode.commands.executeCommand("synapse.liveDiff", r.targetId));
+          return;
+        }
         case "message.updated": {
           const m = ev.data as { status: string; from: string; subject: string };
           if (m.status === "held") void vscode.window.showWarningMessage(l("Synapse held a message from {0}: \"{1}\". Review it on the home tab.", name(m.from), m.subject));

@@ -85,6 +85,8 @@ window.SYNAPSE_STRINGS = {
     "queue.title": "Merge queue", "queue.queued": "Queued", "queue.merging": "Merging", "queue.merged": "Merged", "queue.failed": "Not merged", "queue.removed": "Removed",
     "queue.retry": "Retry", "queue.remove": "Remove", "queue.add": "Queue merge", "queue.addHint": "Merge this agent's work on its own when its tests pass, after what is already queued",
     "alert.queueFailed": "{0}'s work was not merged",
+    "live.reviewBy": "Review by {0}", "live.blocker": "Must fix", "live.suggestion": "Suggestion",
+    "detail.reviewBy": "Review by {0}", "detail.reviewNoSummary": "No summary.", "detail.reviewComments": "{0} comments in live changes", "detail.askReview": "Ask an agent to review", "detail.askReviewHint": "Another agent reads these changes (without changing files) and leaves line comments",
     "stop.cancelled": "Turn stopped", "stop.refusal": "The agent declined", "stop.max_tokens": "Stopped: output limit reached", "stop.max_turn_requests": "Stopped: step limit reached",
   },
   ko: {
@@ -170,6 +172,8 @@ window.SYNAPSE_STRINGS = {
     "queue.title": "병합 대기열", "queue.queued": "대기", "queue.merging": "병합 중", "queue.merged": "병합됨", "queue.failed": "병합 안 됨", "queue.removed": "빠짐",
     "queue.retry": "다시 시도", "queue.remove": "빼기", "queue.add": "병합 대기열에 넣기", "queue.addHint": "먼저 들어간 작업 다음에, 테스트가 통과하면 이 에이전트의 작업만 병합합니다",
     "alert.queueFailed": "{0}의 작업이 병합되지 않았습니다",
+    "live.reviewBy": "{0}의 검토", "live.blocker": "꼭 고칠 것", "live.suggestion": "제안",
+    "detail.reviewBy": "{0}의 검토", "detail.reviewNoSummary": "요약이 없습니다.", "detail.reviewComments": "실시간 변경에 코멘트 {0}개", "detail.askReview": "다른 에이전트에게 검토 요청", "detail.askReviewHint": "다른 에이전트가 이 변경을 (파일을 바꾸지 않고) 읽고 줄마다 코멘트를 남깁니다",
     "stop.cancelled": "턴을 중지했습니다", "stop.refusal": "에이전트가 거절했습니다", "stop.max_tokens": "중지: 출력 한도 도달", "stop.max_turn_requests": "중지: 단계 한도 도달",
   },
 };

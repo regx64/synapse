@@ -38,6 +38,7 @@ Agents
                                      comment on its lines; --tell gives it to the agent, --make-task makes a task
   comments [--agent ID]              open comments; comment resolve <id>
   takeover <from> <to> [--task ID] [--note TEXT]
+  review-by <agent-id> <reviewer-id>  another agent reviews this agent's changes (line comments)
                                      <to> continues <from>'s unfinished work (changes and task move)
 
 Coordination
@@ -502,6 +503,11 @@ async function run(c: SynapseClient, cmd: string, sub: string | undefined, rest:
         action: v.tell ? "guidance" : v["make-task"] ? "task" : "note",
       });
       out(x, () => `${x.id}: ${x.action === "guidance" ? "given to the agent" : x.action === "task" ? `task ${x.taskId} created` : "noted"} at ${x.path}:${x.line}`);
+      return 0;
+    }
+    case "review-by": {
+      const r = await c.call("agents.review", { reviewerId: need(rest[0], "reviewer agent"), targetId: need(sub, "agent to review") });
+      out(r, () => `${r.name} is reviewing ${sub}'s changes; its comments appear in: synapse comments ${sub}`);
       return 0;
     }
     case "takeover": {

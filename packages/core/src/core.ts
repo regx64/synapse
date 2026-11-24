@@ -25,6 +25,7 @@ import { tellAboutConflict } from "./conflict-help.js";
 import { AgentTestService } from "./agent-tests.js";
 import { GoalService } from "./goals.js";
 import { MergeQueue } from "./merge-queue.js";
+import { AgentReviewService } from "./agent-review.js";
 import { debounce, KeyedSerializer } from "./util.js";
 import { WorktreeManager } from "./worktrees.js";
 
@@ -65,6 +66,7 @@ export class SynapseCore {
   readonly agentTests: AgentTestService;
   readonly goals: GoalService;
   readonly mergeQueue: MergeQueue;
+  readonly agentReviews: AgentReviewService;
   readonly team: TeamService;
   readonly collab: CollabService;
   /** Where the API is served; set by serve(). Agents' MCP servers connect back here. */
@@ -100,6 +102,7 @@ export class SynapseCore {
           .onTurnEnd(id, stopReason, error)
           .catch((e: Error) => this.log(`task update failed: ${e.message}`))
           .then(() => this.goals.onTurnEnd(id, stopReason, error))
+          .then(() => this.agentReviews.onTurnEnd(id, stopReason, error))
           .then(() => this.agentTests.onTurnEnd(id, stopReason))
           .then(() => this.mergeQueue.kick())
           .catch((e: Error) => this.log(`tests for ${id} failed to run: ${e.message}`));
@@ -117,6 +120,7 @@ export class SynapseCore {
     this.agentTests = new AgentTestService({ store: this.store, agents: this.agents, config: () => this.config, refreshOwnership: (id) => this.ownership.refresh(id), log: this.log });
     this.goals = new GoalService({ store: this.store, agents: this.agents, collab: this.collab });
     this.comments = new CommentService({ store: this.store, agents: this.agents, collab: this.collab, ownership: this.ownership });
+    this.agentReviews = new AgentReviewService(this.store, this.agents, this.comments);
     this.team = new TeamService({ store: this.store, config: () => this.config, log: this.log, onPeersChanged: () => this.scheduleConflictCheck() });
     this.reviews = new ReviewService({
       store: this.store,
@@ -362,6 +366,8 @@ export class SynapseCore {
       },
       "tasks.start": (p) => this.collab.startTask(req(p, "id")),
       "tasks.setStatus": (p) => this.collab.setStatus(req(p, "id"), req(p, "status")),
+      "comments.tell": (p) => this.comments.tell(req(p, "id")),
+      "agents.review": (p) => this.agentReviews.start(req(p, "reviewerId"), req(p, "targetId")),
       "queue.add": (p) => this.mergeQueue.add(req(p, "agentId"), p.taskId),
       "queue.remove": (p) => this.mergeQueue.remove(req(p, "id")),
       "queue.retry": (p) => this.mergeQueue.retry(req(p, "id")),

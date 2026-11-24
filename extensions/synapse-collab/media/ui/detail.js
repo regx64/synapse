@@ -161,6 +161,14 @@
           ],
         );
       }
+      case "review": {
+        const reviewer = state.agents.find((x) => x.id === e.reviewer);
+        return h("div", { class: "card task-card" }, [
+          h("div", { class: "row tiny muted label" }, [reviewer ? dot(reviewer.color, "sm") : null, t("detail.reviewBy", reviewer ? reviewer.name : e.reviewer || "")]),
+          e.error ? h("div", { class: "small error-text" }, [e.error]) : h("div", { class: "small" }, [e.text || t("detail.reviewNoSummary")]),
+          e.comments ? h("button", { class: "link tiny", onclick: () => post({ type: "select", id: a.id, show: "diff" }) }, [t("detail.reviewComments", e.comments)]) : null,
+        ]);
+      }
       case "rewind":
         return h("div", { class: "divider tiny st-needs" }, [t("detail.rewound")]);
       case "end":
@@ -258,6 +266,7 @@
     body.append(
       h("div", { class: "row wrap" }, [
         h("button", { class: "btn", onclick: () => post({ type: "select", id: a.id, show: "diff" }) }, [icon("diff", 14), t("detail.openLive")]),
+        h("button", { class: "btn", onclick: () => cmd("synapse.reviewAgent", a.id), title: t("detail.askReviewHint") }, [icon("comment", 14), t("detail.askReview")]),
         open ? h("span", { class: "tiny muted" }, [t("detail.openComments", open)]) : null,
       ]),
       h(

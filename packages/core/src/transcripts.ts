@@ -1,6 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { AgentOutputEvent, CoreEvent, TranscriptEntry } from "@synapse/protocol";
+import type { AgentOutputEvent, AgentReviewedEvent, CoreEvent, TranscriptEntry } from "@synapse/protocol";
 import { redact } from "./redact.js";
 import type { StateStore } from "./store.js";
 import { debounce, nowIso } from "./util.js";
@@ -50,6 +50,11 @@ export class TranscriptStore {
   private onEvent(ev: CoreEvent): void {
     if (ev.type === "agent.removed") return this.remove((ev.data as { id: string }).id);
     if (ev.type === "agent.updated") return this.linkTask(ev.data as { id: string; currentTaskId?: string });
+    if (ev.type === "agent.reviewed") {
+      const r = ev.data as AgentReviewedEvent;
+      this.push(r.targetId, { kind: "review", text: clip(redact(r.error ?? r.summary), "review"), reviewer: r.reviewerId, comments: r.comments, error: r.error ? redact(r.error) : undefined });
+      return;
+    }
     if (ev.type !== "agent.output") return;
     const o = ev.data as AgentOutputEvent;
     const list = this.entries(o.agentId);

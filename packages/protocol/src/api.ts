@@ -570,6 +570,10 @@ export interface CodeComment {
   status: "open" | "resolved";
   /** The quoted code is no longer in the agent's version of the file. */
   outdated?: boolean;
+  /** Written by a reviewer agent (its id); absent when the person wrote it. */
+  author?: string;
+  /** A reviewer agent's rating of the comment. */
+  severity?: "blocker" | "suggestion";
   createdAt: string;
   updatedAt: string;
 }
@@ -712,6 +716,7 @@ export type CoreEventType =
   | "comment.updated"
   | "goal.updated"
   | "queue.updated"
+  | "agent.reviewed"
   | "team.updated"
   | "audit.added"
   | "core.log";
@@ -721,6 +726,17 @@ export interface CoreEvent<T = unknown> {
   ts: string;
   type: CoreEventType;
   data: T;
+}
+
+/** A reviewer agent finished reviewing another agent's changes. */
+export interface AgentReviewedEvent {
+  reviewerId: string;
+  targetId: string;
+  summary: string;
+  comments: number;
+  /** Comments that could not be placed (unknown file or line). */
+  skipped: number;
+  error?: string;
 }
 
 export interface AgentOutputEvent {
@@ -749,7 +765,7 @@ export interface TranscriptEntry {
   /** Increasing per agent. */
   n: number;
   at: string;
-  kind: "prompt" | "guidance" | "message" | "thought" | "tool" | "end" | "rewind";
+  kind: "prompt" | "guidance" | "message" | "thought" | "tool" | "end" | "rewind" | "review";
   text: string;
   /** prompt: the task the agent was working on. */
   taskId?: string;
@@ -764,6 +780,9 @@ export interface TranscriptEntry {
   toolKind?: string;
   status?: ToolCallSummary["status"];
   locations?: string[];
+  /** review: the reviewer agent's id, and how many comments it left (text is its summary). */
+  reviewer?: string;
+  comments?: number;
   /** end */
   stopReason?: string;
   error?: string;
@@ -874,6 +893,10 @@ export interface CoreMethods {
   /** Dismisses a teammate's claim on one of your agents. */
   "team.dismissClaim": { params: { id: string }; result: TeamState };
   "comments.resolve": { params: { id: string; status?: CodeComment["status"] }; result: CodeComment };
+  /** Gives a note (e.g. a reviewer agent's) to its agent as guidance after its turn. */
+  "comments.tell": { params: { id: string }; result: CodeComment };
+  /** Another agent reviews this agent's changes (changing no files) and leaves line comments on them. */
+  "agents.review": { params: { reviewerId: string; targetId: string }; result: AgentState };
   "agents.takeover": { params: { from: string; to: string; taskId?: string; note?: string }; result: TakeoverResult };
   /** Throws the agent's worktree back to a ref (default: the current base). */
   "agents.reset": { params: { id: string; ref?: string }; result: AgentState };

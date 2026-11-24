@@ -134,16 +134,19 @@
 
   function commentEl(c) {
     const what = c.action === "guidance" ? t("live.givenToAgent") : c.action === "task" ? t("live.becameTask", c.taskId || "") : t("live.note");
+    const by = c.author ? ((data && data.names && data.names[c.author]) || c.author) : "";
     const [first, ...rest] = c.text.split("\n");
     return h("div", { class: `cmt${c.status === "resolved" ? " resolved" : ""}${c.outdated ? " outdated" : ""}` }, [
       h("div", { class: "row wrap" }, [
-        h("span", { class: "avatar", "aria-hidden": "true" }, [t("live.youInitial")]),
-        h("strong", {}, [t("detail.you")]),
+        h("span", { class: "avatar", "aria-hidden": "true" }, [by ? by.slice(0, 1).toUpperCase() : t("live.youInitial")]),
+        h("strong", {}, [by ? t("live.reviewBy", by) : t("detail.you")]),
+        c.severity ? h("span", { class: `pill ${c.severity === "blocker" ? "error" : ""}` }, [t(`live.${c.severity}`)]) : null,
         h("span", { class: "tiny muted" }, [ago(c.createdAt)]),
         h("span", { class: "tag" }, [what]),
         c.outdated ? h("span", { class: "tag st-needs" }, [t("live.codeChanged")]) : null,
         h("span", { class: "tiny muted" }, [c.endLine > c.line ? t("live.lines", c.line, c.endLine) : t("live.line", c.line)]),
         h("span", { class: "spacer" }),
+        c.status === "open" && c.action === "note" ? h("button", { class: "link", onclick: () => post({ type: "tell", id: c.id }) }, [t("live.tell")]) : null,
         c.status === "open" ? h("button", { class: "link", onclick: () => post({ type: "resolve", id: c.id, status: "resolved" }) }, [t("live.resolve")]) : h("button", { class: "link", onclick: () => post({ type: "resolve", id: c.id, status: "open" }) }, [t("live.reopen")]),
       ]),
       h("div", { class: "strong" }, [first]),

@@ -71,5 +71,6 @@
   "cmd.selectAgent": "Select Agent",
   "cmd.nextAgent": "Next Agent",
   "cmd.previousAgent": "Previous Agent",
-  "cmd.focusGuidance": "Give Guidance to the Selected Agent"
+  "cmd.focusGuidance": "Give Guidance to the Selected Agent",
+  "cmd.reviewAgent": "Ask an Agent to Review Another's Changes…"
 }

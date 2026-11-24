@@ -216,6 +216,11 @@
         "command": "synapse.focusGuidance",
         "title": "%cmd.focusGuidance%",
         "category": "Synapse"
+      },
+      {
+        "command": "synapse.reviewAgent",
+        "title": "%cmd.reviewAgent%",
+        "category": "Synapse"
       }
     ],
     "menus": {

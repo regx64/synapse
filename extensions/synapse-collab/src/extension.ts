@@ -106,6 +106,20 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     if (agents.length) selection.select(agents[(i - 1 + agents.length) % agents.length]!.id);
   });
   register("synapse.focusGuidance", () => detailView.focusComposer());
+  register("synapse.reviewAgent", async (target) => {
+    const targetId = await pickAgent(target);
+    if (!targetId) return;
+    const reviewers = (conn.state?.agents ?? []).filter((a) => a.id !== targetId && a.status === "idle");
+    if (!reviewers.length) {
+      void vscode.window.showWarningMessage(l("Synapse: no idle agent can review. Start another agent first."));
+      return;
+    }
+    const pick = await vscode.window.showQuickPick(
+      reviewers.map((a) => ({ label: a.name, description: a.agentInfo?.name ?? a.preset ?? "", id: a.id })),
+      { placeHolder: l("Which agent reviews {0}'s changes? It changes no files.", conn.state?.agents.find((a) => a.id === targetId)?.name ?? targetId) },
+    );
+    if (pick) await conn.call("agents.review", { reviewerId: pick.id, targetId });
+  });
   register("synapse.enableTeam", async () => {
     const name = await vscode.window.showInputBox({ prompt: l("Your name in team mode (teammates see it)"), placeHolder: l("Leave empty to use your git user.name") });
     if (name === undefined) return;
