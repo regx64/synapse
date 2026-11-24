@@ -91,7 +91,9 @@ function sha256(file) {
 function unzip(zip, dest) {
   if (process.platform === "win32") {
     // Windows' own tar (bsdtar) reads zip files; Expand-Archive fails on some runners.
-    execFileSync("tar", ["-xf", zip, "-C", dest], { stdio: "inherit" });
+    // Call it by path: under Git Bash, PATH finds GNU tar first, which cannot.
+    const tar = path.join(process.env.SystemRoot ?? "C:\\Windows", "System32", "tar.exe");
+    execFileSync(tar, ["-xf", zip, "-C", dest], { stdio: "inherit" });
   } else {
     execFileSync("unzip", ["-q", "-o", zip, "-d", dest], { stdio: "inherit" });
   }
