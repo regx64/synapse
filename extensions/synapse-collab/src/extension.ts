@@ -8,7 +8,7 @@ import { Markers } from "./markers.js";
 import { POLICY_SCHEME, PolicyFileSystem } from "./policy.js";
 import { REVIEW_SCHEME, ReviewContentProvider, ReviewPanel } from "./review.js";
 import { attention } from "./attention.js";
-import { l } from "./ui/l10n.js";
+import { initL10n, l } from "./ui/l10n.js";
 import { Selection } from "./ui/selection.js";
 import { AgentsView } from "./views/agents.js";
 import { DetailView } from "./views/detail.js";
@@ -20,6 +20,7 @@ import { HomePanel } from "./views/home.js";
  * state, and every action is a core API call.
  */
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
+  initL10n(context.extensionPath);
   const folder = vscode.workspace.workspaceFolders?.[0];
   if (!folder || folder.uri.scheme !== "file") return;
   const repoRoot = await gitRoot(folder.uri.fsPath);
